@@ -22,6 +22,12 @@ function fromCents(cents: number): number {
   return cents / CURRENCY_SCALE;
 }
 
+type BalanceCentsEntry = { user_id: UserId; cents: number };
+
+function sortByCentsDesc(a: BalanceCentsEntry, b: BalanceCentsEntry) {
+  return b.cents - a.cents;
+}
+
 /**
  * Calculate simplified settlement transactions for a trip.
  *
@@ -104,19 +110,76 @@ export function calculateTripDebts(
   const netBalances: Record<UserId, number> = {};
   const creditors: BalanceEntry[] = [];
   const debtors: BalanceEntry[] = [];
+  const creditorCents: BalanceCentsEntry[] = [];
+  const debtorCents: BalanceCentsEntry[] = [];
+
+  let netSumCents = 0;
   for (const memberId of members) {
     const cents = balanceCentsByUser.get(memberId) ?? 0;
     const amount = fromCents(cents);
     netBalances[memberId] = amount;
 
+    netSumCents += cents;
+
     if (cents > 0) {
       creditors.push({ user_id: memberId, amount });
+      creditorCents.push({ user_id: memberId, cents });
     } else if (cents < 0) {
       debtors.push({ user_id: memberId, amount: fromCents(Math.abs(cents)) });
+      debtorCents.push({ user_id: memberId, cents: Math.abs(cents) });
     }
   }
 
-  // Settlement algorithm is intentionally not implemented yet.
+  if (netSumCents !== 0) {
+    throw new Error(
+      `Net balances do not sum to zero (${fromCents(
+        netSumCents
+      )}). Check that totalPaid equals totalOwed across all expenses.`
+    );
+  }
+
+  creditorCents.sort(sortByCentsDesc);
+  debtorCents.sort(sortByCentsDesc);
+
+  // Min Cash Flow-style greedy matching.
+  // Each step fully settles either the current largest debtor or creditor,
+  // ensuring no redundant (0-amount) transactions and preventing cycles.
   const settlements: SettlementTransaction[] = [];
+  let i = 0;
+  let j = 0;
+
+  while (i < debtorCents.length && j < creditorCents.length) {
+    const debtor = debtorCents[i];
+    const creditor = creditorCents[j];
+
+    const transferCents = Math.min(debtor.cents, creditor.cents);
+
+    if (transferCents > 0) {
+      // Debtor sends money to creditor.
+      settlements.push({
+        payer_id: creditor.user_id,
+        payee_id: debtor.user_id,
+        amount: fromCents(transferCents),
+      });
+    }
+
+    debtor.cents -= transferCents;
+    creditor.cents -= transferCents;
+
+    if (debtor.cents === 0) i++;
+    if (creditor.cents === 0) j++;
+  }
+
+  // Defensive check: if either side has remaining cents, input data is inconsistent.
+  const remainingDebtors = debtorCents.slice(i).reduce((sum, e) => sum + e.cents, 0);
+  const remainingCreditors = creditorCents
+    .slice(j)
+    .reduce((sum, e) => sum + e.cents, 0);
+  if (remainingDebtors !== 0 || remainingCreditors !== 0) {
+    throw new Error(
+      "Unsettled balances remain after simplification. Check inputs for rounding or membership issues."
+    );
+  }
+
   return { netBalances, creditors, debtors, settlements };
 }
