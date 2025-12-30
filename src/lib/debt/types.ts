@@ -30,9 +30,9 @@ export interface DebtCalculationInput {
 }
 
 export interface SettlementTransaction {
-  /** The user who should receive money. */
+  /** The user who should send money (debtor). */
   payer_id: UserId;
-  /** The user who should send money. */
+  /** The user who should receive money (creditor). */
   payee_id: UserId;
   /** Amount to be transferred, in the trip currency. */
   amount: number;

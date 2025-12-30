@@ -155,10 +155,14 @@ export function calculateTripDebts(
     const transferCents = Math.min(debtor.cents, creditor.cents);
 
     if (transferCents > 0) {
+      if (debtor.user_id === creditor.user_id) {
+        throw new Error("Invalid settlement: self-payment would occur.");
+      }
+
       // Debtor sends money to creditor.
       settlements.push({
-        payer_id: creditor.user_id,
-        payee_id: debtor.user_id,
+        payer_id: debtor.user_id,
+        payee_id: creditor.user_id,
         amount: fromCents(transferCents),
       });
     }
