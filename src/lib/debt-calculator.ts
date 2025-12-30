@@ -19,7 +19,8 @@ function toCents(amount: number): number {
 }
 
 function fromCents(cents: number): number {
-  return cents / CURRENCY_SCALE;
+  // Ensure consistent 2-decimal output (avoid 0.30000000000000004-style artifacts).
+  return Number((cents / CURRENCY_SCALE).toFixed(2));
 }
 
 type BalanceCentsEntry = { user_id: UserId; cents: number };
@@ -68,6 +69,16 @@ export function calculateTripDebts(
   }
 
   for (const expense of expenses) {
+    if (!expense.payers?.length) {
+      throw new Error(`Expense ${expense.id} must have at least one payer.`);
+    }
+    if (!expense.shares?.length) {
+      throw new Error(`Expense ${expense.id} must have at least one share.`);
+    }
+
+    const payerCentsByIndex: number[] = [];
+    const shareCentsByIndex: number[] = [];
+
     for (const payer of expense.payers) {
       if (!memberSet.has(payer.user_id)) {
         throw new Error(
@@ -79,12 +90,7 @@ export function calculateTripDebts(
           `Expense ${expense.id} payer amount_paid must be >= 0 (user_id=${payer.user_id})`
         );
       }
-
-      const delta = toCents(payer.amount_paid);
-      balanceCentsByUser.set(
-        payer.user_id,
-        (balanceCentsByUser.get(payer.user_id) ?? 0) + delta
-      );
+      payerCentsByIndex.push(toCents(payer.amount_paid));
     }
 
     for (const share of expense.shares) {
@@ -98,8 +104,44 @@ export function calculateTripDebts(
           `Expense ${expense.id} share amount_owed must be >= 0 (user_id=${share.user_id})`
         );
       }
+      shareCentsByIndex.push(toCents(share.amount_owed));
+    }
 
-      const delta = toCents(share.amount_owed);
+    const totalPaidCents = payerCentsByIndex.reduce((sum, v) => sum + v, 0);
+    const totalOwedCents = shareCentsByIndex.reduce((sum, v) => sum + v, 0);
+    const diffCents = totalPaidCents - totalOwedCents;
+
+    // Rounding hardening: if payers and shares differ by a few cents due to rounding,
+    // adjust the largest share by the difference so the expense balances exactly.
+    if (diffCents !== 0) {
+      let bestIndex = 0;
+      for (let idx = 1; idx < shareCentsByIndex.length; idx++) {
+        if (shareCentsByIndex[idx] > shareCentsByIndex[bestIndex]) bestIndex = idx;
+      }
+
+      const adjusted = shareCentsByIndex[bestIndex] + diffCents;
+      if (adjusted < 0) {
+        throw new Error(
+          `Expense ${expense.id} cannot be balanced after rounding (diff=${fromCents(
+            diffCents
+          )}).`
+        );
+      }
+      shareCentsByIndex[bestIndex] = adjusted;
+    }
+
+    for (let idx = 0; idx < expense.payers.length; idx++) {
+      const payer = expense.payers[idx];
+      const delta = payerCentsByIndex[idx];
+      balanceCentsByUser.set(
+        payer.user_id,
+        (balanceCentsByUser.get(payer.user_id) ?? 0) + delta
+      );
+    }
+
+    for (let idx = 0; idx < expense.shares.length; idx++) {
+      const share = expense.shares[idx];
+      const delta = shareCentsByIndex[idx];
       balanceCentsByUser.set(
         share.user_id,
         (balanceCentsByUser.get(share.user_id) ?? 0) - delta
@@ -134,7 +176,7 @@ export function calculateTripDebts(
     throw new Error(
       `Net balances do not sum to zero (${fromCents(
         netSumCents
-      )}). Check that totalPaid equals totalOwed across all expenses.`
+      )}). Check that total paid equals total owed (rounding is applied to cents).`
     );
   }
 
@@ -145,6 +187,12 @@ export function calculateTripDebts(
   // Each step fully settles either the current largest debtor or creditor,
   // ensuring no redundant (0-amount) transactions and preventing cycles.
   const settlements: SettlementTransaction[] = [];
+
+  // Fully settled trip.
+  if (debtorCents.length === 0 || creditorCents.length === 0) {
+    return { netBalances, creditors, debtors, settlements };
+  }
+
   let i = 0;
   let j = 0;
 
