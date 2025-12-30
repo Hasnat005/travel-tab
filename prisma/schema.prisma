@@ -28,8 +28,21 @@ model Trip {
   creator User @relation("UserTrips", fields: [creator_id], references: [id])
 
   members TripMember[]
+  expenses Expense[]
 
   @@index([creator_id])
+}
+
+model Expense {
+  id           String   @id @default(uuid()) @db.Uuid
+  trip_id      String   @db.Uuid
+  description  String
+  total_amount Decimal  @db.Decimal(10, 2)
+  date         DateTime
+
+  trip Trip @relation(fields: [trip_id], references: [id])
+
+  @@index([trip_id])
 }
 
 model TripMember {
