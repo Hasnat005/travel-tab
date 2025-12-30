@@ -6,4 +6,20 @@ datasource db {
   provider = "postgresql"
 }
 
-// Add models here.
+model User {
+  id    String  @id @default(uuid()) @db.Uuid
+  email String  @unique
+  name  String?
+
+  // Prepared relation (expand Trip model later)
+  trips Trip[]
+}
+
+// Minimal placeholder so `User.trips` is valid.
+// You can expand this model with destination, dates, etc.
+model Trip {
+  id     String @id @default(uuid()) @db.Uuid
+  userId String @db.Uuid
+
+  user User @relation(fields: [userId], references: [id])
+}
