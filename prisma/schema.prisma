@@ -17,6 +17,10 @@ model User {
   memberships TripMember[]
 
   expensePayments ExpensePayer[]
+
+  expenseShares ExpenseShare[]
+
+  performedTripLogs TripLog[] @relation("TripLogPerformedBy")
 }
 
 model Trip {
@@ -31,6 +35,7 @@ model Trip {
 
   members TripMember[]
   expenses Expense[]
+  logs     TripLog[]
 
   @@index([creator_id])
 }
@@ -45,8 +50,21 @@ model Expense {
   trip Trip @relation(fields: [trip_id], references: [id])
 
   payers ExpensePayer[]
+  shares ExpenseShare[]
 
   @@index([trip_id])
+}
+
+model ExpenseShare {
+  expense_id  String  @db.Uuid
+  user_id     String  @db.Uuid
+  amount_owed Decimal @db.Decimal(10, 2)
+
+  expense Expense @relation(fields: [expense_id], references: [id])
+  user    User    @relation(fields: [user_id], references: [id])
+
+  @@id([expense_id, user_id])
+  @@index([user_id])
 }
 
 model ExpensePayer {
@@ -59,6 +77,21 @@ model ExpensePayer {
 
   @@id([expense_id, user_id])
   @@index([user_id])
+}
+
+model TripLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  trip_id      String   @db.Uuid
+  action_type  String
+  performed_by String   @db.Uuid
+  details      Json
+  timestamp    DateTime
+
+  trip      Trip @relation(fields: [trip_id], references: [id])
+  performer User @relation("TripLogPerformedBy", fields: [performed_by], references: [id])
+
+  @@index([trip_id])
+  @@index([performed_by])
 }
 
 model TripMember {
