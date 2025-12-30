@@ -32,6 +32,7 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 - Copy `.env.local.example` to `.env.local` and fill in values from **Project Settings → API**:
 	- `NEXT_PUBLIC_SUPABASE_URL`
 	- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+	- `DATABASE_URL` (from **Project Settings → Database**)
 
 3) Configure Auth redirect URLs
 
