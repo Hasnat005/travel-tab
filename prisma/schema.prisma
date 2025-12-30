@@ -12,14 +12,18 @@ model User {
   name  String?
 
   // Prepared relation (expand Trip model later)
-  trips Trip[]
+  trips Trip[] @relation("UserTrips")
 }
 
-// Minimal placeholder so `User.trips` is valid.
-// You can expand this model with destination, dates, etc.
 model Trip {
-  id     String @id @default(uuid()) @db.Uuid
-  userId String @db.Uuid
+  id          String   @id @default(uuid()) @db.Uuid
+  creator_id  String   @db.Uuid
+  name        String
+  destination String
+  start_date  DateTime
+  end_date    DateTime
 
-  user User @relation(fields: [userId], references: [id])
+  creator User @relation("UserTrips", fields: [creator_id], references: [id])
+
+  @@index([creator_id])
 }
