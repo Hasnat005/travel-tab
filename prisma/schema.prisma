@@ -13,6 +13,8 @@ model User {
 
   // Prepared relation (expand Trip model later)
   trips Trip[] @relation("UserTrips")
+
+  memberships TripMember[]
 }
 
 model Trip {
@@ -25,5 +27,18 @@ model Trip {
 
   creator User @relation("UserTrips", fields: [creator_id], references: [id])
 
+  members TripMember[]
+
   @@index([creator_id])
+}
+
+model TripMember {
+  trip_id String @db.Uuid
+  user_id String @db.Uuid
+
+  trip Trip @relation(fields: [trip_id], references: [id])
+  user User @relation(fields: [user_id], references: [id])
+
+  @@id([trip_id, user_id])
+  @@index([user_id])
 }
