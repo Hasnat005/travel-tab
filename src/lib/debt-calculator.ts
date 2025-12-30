@@ -30,31 +30,56 @@ function sortByCentsDesc(a: BalanceCentsEntry, b: BalanceCentsEntry) {
 }
 
 /**
- * Calculate simplified settlement transactions for a trip.
+ * Calculates each member's net balance and produces a simplified set of settlement
+ * transactions that would settle the trip.
  *
- * Inputs:
- * - `members`: list of user IDs who belong to the trip
- * - `expenses`: list of expenses, each containing:
- *   - `payers`: who paid and how much (`amount_paid`)
- *   - `shares`: who owes and how much (`amount_owed`)
+ * What it does
+ * - Aggregates all `expenses` to compute each member's net balance:
+ *   - netBalance = totalPaid - totalOwed
+ *   - positive => member should receive money (creditor)
+ *   - negative => member owes money (debtor)
+ * - Generates `settlements` using a greedy "Min Cash Flow"-style matcher:
+ *   repeatedly match the largest remaining debtor with the largest remaining creditor.
  *
- * Expected behavior (when implemented):
- * - Treat `amount_paid` and `amount_owed` as amounts in the same currency.
- * - Aggregate across all expenses to compute each member's net balance:
- *   - Paid more than owed => net positive (should receive money)
- *   - Owed more than paid => net negative (should send money)
- * - Produce a simplified list of settlement transactions ({ payer_id, payee_id, amount })
- *   that would settle all balances.
- * - Output transactions should:
- *   - Have strictly positive `amount`
- *   - Not include self-transfers (payer_id !== payee_id)
- *   - Only reference user IDs that exist in `members`
- *   - Settle the trip such that total sent equals total received (within rounding rules)
+ * Input expectations
+ * - `members` is the complete list of trip member user IDs.
+ * - Every payer/share user_id must exist in `members`.
+ * - Each expense must have at least one payer and at least one share.
+ * - Amounts must be finite numbers and must be >= 0.
  *
- * Notes:
- * - This function intentionally contains no business logic yet.
- * - When implementing, decide on rounding strategy for decimals (e.g., cents) and ensure
- *   totals remain consistent.
+ * Rounding strategy
+ * - All calculations are performed in integer cents (rounded per input amount).
+ * - If, after rounding, an expense's total paid differs from total owed by a few cents,
+ *   the difference is applied to the largest share so the expense balances exactly.
+ * - All output amounts are normalized to exactly 2 decimals.
+ *
+ * Output guarantees
+ * - `settlements` amounts are strictly positive
+ * - `settlements` never include self-payments (payer_id !== payee_id)
+ * - zero-value transactions are excluded
+ * - If the trip is already settled, `settlements` is an empty array
+ *
+ * Example
+ * ```ts
+ * const members = ["u1", "u2", "u3"];
+ * const expenses = [
+ *   {
+ *     id: "e1",
+ *     payers: [{ user_id: "u1", amount_paid: 60 }],
+ *     shares: [
+ *       { user_id: "u1", amount_owed: 20 },
+ *       { user_id: "u2", amount_owed: 20 },
+ *       { user_id: "u3", amount_owed: 20 },
+ *     ],
+ *   },
+ * ];
+ *
+ * const result = calculateTripDebts(expenses, members);
+ * // result.settlements ~= [
+ * //   { payer_id: "u2", payee_id: "u1", amount: 20 },
+ * //   { payer_id: "u3", payee_id: "u1", amount: 20 },
+ * // ]
+ * ```
  */
 export function calculateTripDebts(
   expenses: ExpenseInput[],
