@@ -38,6 +38,12 @@ export interface SettlementTransaction {
   amount: number;
 }
 
+export interface BalanceEntry {
+  user_id: UserId;
+  /** Absolute amount (always >= 0) in the trip currency. */
+  amount: number;
+}
+
 export interface DebtCalculationOutput {
   /**
    * Per-member net balances.
@@ -46,5 +52,12 @@ export interface DebtCalculationOutput {
    * negative means the member owes money.
    */
   netBalances: Record<UserId, number>;
+
+  /** Members with a positive net balance (they should receive money). */
+  creditors: BalanceEntry[];
+
+  /** Members with a negative net balance (they owe money). Amount is stored as an absolute value. */
+  debtors: BalanceEntry[];
+
   settlements: SettlementTransaction[];
 }

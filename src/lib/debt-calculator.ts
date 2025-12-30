@@ -1,4 +1,5 @@
 import type {
+  BalanceEntry,
   DebtCalculationOutput,
   ExpenseInput,
   SettlementTransaction,
@@ -101,11 +102,21 @@ export function calculateTripDebts(
   }
 
   const netBalances: Record<UserId, number> = {};
+  const creditors: BalanceEntry[] = [];
+  const debtors: BalanceEntry[] = [];
   for (const memberId of members) {
-    netBalances[memberId] = fromCents(balanceCentsByUser.get(memberId) ?? 0);
+    const cents = balanceCentsByUser.get(memberId) ?? 0;
+    const amount = fromCents(cents);
+    netBalances[memberId] = amount;
+
+    if (cents > 0) {
+      creditors.push({ user_id: memberId, amount });
+    } else if (cents < 0) {
+      debtors.push({ user_id: memberId, amount: fromCents(Math.abs(cents)) });
+    }
   }
 
   // Settlement algorithm is intentionally not implemented yet.
   const settlements: SettlementTransaction[] = [];
-  return { netBalances, settlements };
+  return { netBalances, creditors, debtors, settlements };
 }
