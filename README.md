@@ -20,6 +20,42 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Supabase Setup (Auth + Postgres)
+
+1) Create a Supabase project
+
+- In the Supabase dashboard, create a new project.
+- In **Authentication → Providers**, ensure **Email** is enabled.
+
+2) Configure environment variables
+
+- Copy `.env.local.example` to `.env.local` and fill in values from **Project Settings → API**:
+	- `NEXT_PUBLIC_SUPABASE_URL`
+	- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+3) Configure Auth redirect URLs
+
+- In **Authentication → URL Configuration** set:
+	- **Site URL**: `http://localhost:3000`
+	- **Redirect URLs**: add `http://localhost:3000/auth/callback`
+
+4) Run the app
+
+```bash
+npm run dev
+```
+
+5) Try auth
+
+- Sign up at `http://localhost:3000/signup`
+- Log in at `http://localhost:3000/login`
+- Visit the protected page at `http://localhost:3000/account`
+
+## Database Operations
+
+Once env vars are set, server components and route handlers can access Postgres via the Supabase client.
+Example (server-side): use `createSupabaseServerClient()` and then `supabase.from("your_table").select("*")`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
