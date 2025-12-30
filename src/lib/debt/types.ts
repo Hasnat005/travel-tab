@@ -39,5 +39,12 @@ export interface SettlementTransaction {
 }
 
 export interface DebtCalculationOutput {
+  /**
+   * Per-member net balances.
+   *
+   * Convention: positive means the member should receive money,
+   * negative means the member owes money.
+   */
+  netBalances: Record<UserId, number>;
   settlements: SettlementTransaction[];
 }
