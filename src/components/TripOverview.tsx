@@ -48,7 +48,13 @@ export interface TripOverviewLog {
 export interface TripOverviewProps {
   trip: TripOverviewTrip;
   members: TripOverviewMember[];
+  /** Optional: list of expenses already loaded for this trip. Empty/undefined means no expenses yet. */
   expenses?: TripOverviewExpense[];
+  /**
+   * Optional: current time (ms since epoch) used to render relative timestamps.
+   * Provide this from the parent to keep this component render-pure.
+   */
+  nowMs?: number;
   balances: TripOverviewBalance[];
   settlements: TripOverviewSettlement[];
   logs: TripOverviewLog[];
@@ -62,6 +68,7 @@ export function TripOverview(props: TripOverviewProps) {
 
   const dateRange = `${trip.start_date} → ${trip.end_date}`;
 
+  // Quick lookup tables to turn ids into display values for rendering.
   const balanceByUserId = new Map(balances.map((b) => [b.user_id, b.amount]));
   const memberNameByUserId = new Map(
     members.map((m) => [m.user_id, m.name?.trim() || "Unnamed member"]),
@@ -71,7 +78,8 @@ export function TripOverview(props: TripOverviewProps) {
 
   const formatRelativeTime = (isoTimestamp: string) => {
     const eventTime = new Date(isoTimestamp).getTime();
-    const nowTime = Date.now();
+    const nowTime = props.nowMs;
+    if (typeof nowTime !== "number") return "";
     if (!Number.isFinite(eventTime)) return "";
 
     const diffMs = Math.max(0, nowTime - eventTime);
@@ -86,6 +94,7 @@ export function TripOverview(props: TripOverviewProps) {
     return `${days} day${days === 1 ? "" : "s"} ago`;
   };
 
+  // Logs are displayed in chronological order (oldest → newest).
   const sortedLogs = logs
     .slice()
     .sort(
@@ -116,6 +125,7 @@ export function TripOverview(props: TripOverviewProps) {
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
       <div className="space-y-6">
+        {/* Header: trip identity and date range. */}
         <header className="rounded-lg border border-black/10 p-4">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
@@ -127,6 +137,7 @@ export function TripOverview(props: TripOverviewProps) {
           </div>
         </header>
 
+        {/* Expenses: optional list of recent expenses. When empty, show a subtle empty state. */}
         <section className="rounded-lg border border-black/10 p-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Expenses</h2>
@@ -152,6 +163,7 @@ export function TripOverview(props: TripOverviewProps) {
           )}
         </section>
 
+        {/* Balances: expects one balance per member (missing entries render as "—"). */}
         <section className="rounded-lg border border-black/10 p-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Balances</h2>
@@ -167,7 +179,6 @@ export function TripOverview(props: TripOverviewProps) {
 
               const isZero = typeof amount === "number" && Math.abs(amount) < 1e-9;
               const isPositive = typeof amount === "number" && amount > 0;
-              const isNegative = typeof amount === "number" && amount < 0;
 
               const balanceText =
                 typeof amount !== "number"
@@ -204,6 +215,7 @@ export function TripOverview(props: TripOverviewProps) {
           </ul>
         </section>
 
+        {/* Settlement Plan: simplified payment instructions derived from the debt algorithm output. */}
         <section className="rounded-lg border border-black/10 p-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Settlement Plan</h2>
@@ -241,6 +253,7 @@ export function TripOverview(props: TripOverviewProps) {
           )}
         </section>
 
+        {/* Trip Activity: audit-style log feed (chronological) for informational context. */}
         <section className="rounded-lg border border-black/10 p-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Trip Activity</h2>
