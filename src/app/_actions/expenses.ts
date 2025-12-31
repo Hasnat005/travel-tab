@@ -1,5 +1,7 @@
 "use server";
 
+import { z } from "zod";
+
 /**
  * Server Actions for expense operations.
  *
@@ -11,21 +13,108 @@
  * If we later need third-party / mobile clients, we can add `app/api/expenses` Route Handlers in addition.
  */
 
-export interface CreateExpenseInput {
-  trip_id: string;
-  description: string;
-  /** Trip currency amount, e.g. 12.34 */
-  total_amount: number;
-  /** ISO date string (YYYY-MM-DD) or full ISO timestamp. */
-  date: string;
+const moneySchema = z
+  .number()
+  .finite()
+  .min(0)
+  .refine(
+    (v) => Math.round((v + Number.EPSILON) * 100) === (v + Number.EPSILON) * 100,
+    "Amount must have at most 2 decimal places."
+  );
 
-  payers: Array<{ user_id: string; amount_paid: number }>;
-  shares: Array<{ user_id: string; amount_owed: number }>;
+function toCents(amount: number): number {
+  return Math.round((amount + Number.EPSILON) * 100);
 }
+
+function uniqueByUserId<T extends { user_id: string }>(items: T[]): boolean {
+  const seen = new Set<string>();
+  for (const item of items) {
+    if (seen.has(item.user_id)) return false;
+    seen.add(item.user_id);
+  }
+  return true;
+}
+
+/**
+ * Strict runtime schema for createExpense.
+ * - `.strict()` rejects unknown keys (hardens against malformed requests)
+ * - Currency amounts are validated to be finite and 2-decimal max
+ */
+export const createExpenseInputSchema = z
+  .object({
+    trip_id: z.string().uuid(),
+    description: z.string().trim().min(1),
+    total_amount: moneySchema.refine((v) => v > 0, "total_amount must be > 0"),
+    date: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((s) => !Number.isNaN(Date.parse(s)), "date must be a valid ISO date string"),
+    payers: z
+      .array(
+        z
+          .object({
+            user_id: z.string().uuid(),
+            amount_paid: moneySchema,
+          })
+          .strict()
+      )
+      .min(1, "payers must have at least one entry")
+      .refine(uniqueByUserId, "payers must not contain duplicate user_id values"),
+    shares: z
+      .array(
+        z
+          .object({
+            user_id: z.string().uuid(),
+            amount_owed: moneySchema,
+          })
+          .strict()
+      )
+      .min(1, "shares must have at least one entry")
+      .refine(uniqueByUserId, "shares must not contain duplicate user_id values"),
+  })
+  .strict()
+  .superRefine((input, ctx) => {
+    const totalCents = toCents(input.total_amount);
+    const paidCents = input.payers.reduce(
+      (sum, p) => sum + toCents(p.amount_paid),
+      0
+    );
+    const owedCents = input.shares.reduce(
+      (sum, s) => sum + toCents(s.amount_owed),
+      0
+    );
+
+    if (paidCents !== totalCents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["payers"],
+        message: "Sum of payers.amount_paid must equal total_amount.",
+      });
+    }
+
+    if (owedCents !== totalCents) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["shares"],
+        message: "Sum of shares.amount_owed must equal total_amount.",
+      });
+    }
+  });
+
+/**
+ * TypeScript input contract for createExpense.
+ * Keep this in sync with runtime validation by deriving it from Zod.
+ */
+export type CreateExpenseInput = z.infer<typeof createExpenseInputSchema>;
 
 export interface CreateExpenseResult {
   /** New expense id (UUID). */
   expense_id: string;
+}
+
+export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
+  return createExpenseInputSchema.parse(input);
 }
 
 /**
