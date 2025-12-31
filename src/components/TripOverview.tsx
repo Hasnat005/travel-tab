@@ -48,7 +48,7 @@ export interface TripOverviewProps {
 }
 
 export function TripOverview(props: TripOverviewProps) {
-  const { trip, members, balances, settlements } = props;
+  const { trip, members, balances, settlements, logs } = props;
 
   const dateRange = `${trip.start_date} → ${trip.end_date}`;
 
@@ -58,6 +58,50 @@ export function TripOverview(props: TripOverviewProps) {
   );
 
   const formatMoney = (amount: number) => `$${Math.abs(amount).toFixed(2)}`;
+
+  const formatRelativeTime = (isoTimestamp: string) => {
+    const eventTime = new Date(isoTimestamp).getTime();
+    const nowTime = Date.now();
+    if (!Number.isFinite(eventTime)) return "";
+
+    const diffMs = Math.max(0, nowTime - eventTime);
+    const minutes = Math.floor(diffMs / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+
+    const days = Math.floor(hours / 24);
+    return `${days} day${days === 1 ? "" : "s"} ago`;
+  };
+
+  const sortedLogs = logs
+    .slice()
+    .sort(
+      (a, b) =>
+        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+    );
+
+  const describeLog = (log: TripOverviewLog) => {
+    const actorName = memberNameByUserId.get(log.performed_by) || "Unknown member";
+
+    if (
+      log.action_type === "EXPENSE_CREATED" &&
+      log.details &&
+      typeof log.details === "object" &&
+      "description" in log.details
+    ) {
+      const details = log.details as { description?: unknown };
+      const description =
+        typeof details.description === "string" && details.description.trim()
+          ? details.description.trim()
+          : "an expense";
+      return `${actorName} added ${description} expense`;
+    }
+
+    return `${actorName} ${log.action_type.replaceAll("_", " ").toLowerCase()}`;
+  };
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
@@ -142,6 +186,31 @@ export function TripOverview(props: TripOverviewProps) {
                       <span className="min-w-24 text-right text-sm tabular-nums font-medium">
                         {formatMoney(s.amount)}
                       </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <h2 className="text-base font-semibold tracking-tight">Trip Activity</h2>
+          <div className="mt-3 rounded-md border border-black/10">
+            {sortedLogs.length === 0 ? (
+              <p className="px-3 py-3 text-sm text-black/60">No activity yet.</p>
+            ) : (
+              <ul className="divide-y divide-black/10">
+                {sortedLogs.map((log) => {
+                  const relative = formatRelativeTime(log.timestamp);
+                  return (
+                    <li key={log.id} className="px-3 py-2">
+                      <p className="text-sm text-black/70">
+                        {describeLog(log)}
+                        {relative ? (
+                          <span className="text-black/50"> – {relative}</span>
+                        ) : null}
+                      </p>
                     </li>
                   );
                 })}
