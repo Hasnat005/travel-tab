@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
  * Server Actions for expense operations.
@@ -139,6 +140,16 @@ function formatZodError(error: z.ZodError): string {
  * - Optionally log a `TripLog` entry.
  */
 export async function createExpense(_input: CreateExpenseInput): Promise<CreateExpenseResult> {
+  const supabase = await createSupabaseServerClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    throw new Error("Not authenticated.");
+  }
+
   // Boundary validation BEFORE touching the database.
   // Ensures financial consistency: sum(amount_paid) == total_amount and sum(amount_owed) == total_amount.
   let input: CreateExpenseInput;
@@ -190,6 +201,18 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
           amount_owed: Prisma.Decimal;
         }>;
       }): Promise<{ count: number }>;
+    };
+    tripLog: {
+      create(args: {
+        data: {
+          trip: { connect: { id: string } };
+          action_type: "EXPENSE_CREATED";
+          performer: { connect: { id: string } };
+          details: Record<string, unknown>;
+          timestamp: Date;
+        };
+        select: { id: true };
+      }): Promise<{ id: string }>;
     };
   };
 
@@ -243,6 +266,21 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
         user_id: share.user_id,
         amount_owed: new Prisma.Decimal(share.amount_owed),
       })),
+    });
+
+    await tx.tripLog.create({
+      data: {
+        trip: { connect: { id: input.trip_id } },
+        action_type: "EXPENSE_CREATED",
+        performer: { connect: { id: user.id } },
+        details: {
+          expense_id: expense.id,
+          total_amount: Number(input.total_amount.toFixed(2)),
+          description: input.description,
+        },
+        timestamp: new Date(),
+      },
+      select: { id: true },
     });
 
     return expense.id;
