@@ -2,6 +2,10 @@
 
 import { z } from "zod";
 
+import { Prisma } from "@prisma/client";
+
+import { prisma } from "@/lib/prisma";
+
 /**
  * Server Actions for expense operations.
  *
@@ -137,8 +141,9 @@ function formatZodError(error: z.ZodError): string {
 export async function createExpense(_input: CreateExpenseInput): Promise<CreateExpenseResult> {
   // Boundary validation BEFORE touching the database.
   // Ensures financial consistency: sum(amount_paid) == total_amount and sum(amount_owed) == total_amount.
+  let input: CreateExpenseInput;
   try {
-    validateCreateExpenseInput(_input);
+    input = validateCreateExpenseInput(_input);
   } catch (error) {
     if (error instanceof z.ZodError) {
       throw new Error(`Invalid createExpense input: ${formatZodError(error)}`);
@@ -146,5 +151,25 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
     throw error;
   }
 
-  throw new Error("createExpense is not implemented yet.");
+  // Ensure the expense is linked to the correct trip.
+  // We do an explicit existence check so we can return a clear error.
+  const trip = await prisma.trip.findUnique({
+    where: { id: input.trip_id },
+    select: { id: true },
+  });
+  if (!trip) {
+    throw new Error(`Trip not found: ${input.trip_id}`);
+  }
+
+  const expense = await prisma.expense.create({
+    data: {
+      trip_id: input.trip_id,
+      description: input.description,
+      total_amount: new Prisma.Decimal(input.total_amount),
+      date: new Date(input.date),
+    },
+    select: { id: true },
+  });
+
+  return { expense_id: expense.id };
 }
