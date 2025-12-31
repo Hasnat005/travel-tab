@@ -182,6 +182,15 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
         }>;
       }): Promise<{ count: number }>;
     };
+    expenseShare: {
+      createMany(args: {
+        data: Array<{
+          expense_id: string;
+          user_id: string;
+          amount_owed: Prisma.Decimal;
+        }>;
+      }): Promise<{ count: number }>;
+    };
   };
 
   const prismaClient = prisma as unknown as PrismaClientForExpenses;
@@ -191,6 +200,12 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
   }
   if (input.payers.some((p) => p.amount_paid <= 0)) {
     throw new Error("All payer amounts must be > 0.");
+  }
+  if (!uniqueByUserId(input.shares)) {
+    throw new Error("Duplicate share user_id values are not allowed.");
+  }
+  if (input.shares.some((s) => s.amount_owed <= 0)) {
+    throw new Error("All share amounts must be > 0.");
   }
 
   const expenseId = await prismaClient.$transaction(async (tx) => {
@@ -219,6 +234,14 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
         expense_id: expense.id,
         user_id: payer.user_id,
         amount_paid: new Prisma.Decimal(payer.amount_paid),
+      })),
+    });
+
+    await tx.expenseShare.createMany({
+      data: input.shares.map((share) => ({
+        expense_id: expense.id,
+        user_id: share.user_id,
+        amount_owed: new Prisma.Decimal(share.amount_owed),
       })),
     });
 
