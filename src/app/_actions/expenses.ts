@@ -117,6 +117,15 @@ export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
   return createExpenseInputSchema.parse(input);
 }
 
+function formatZodError(error: z.ZodError): string {
+  return error.issues
+    .map((issue) => {
+      const path = issue.path.length ? issue.path.join(".") : "input";
+      return `${path}: ${issue.message}`;
+    })
+    .join("; ");
+}
+
 /**
  * Creates an expense for a trip.
  *
@@ -126,5 +135,16 @@ export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
  * - Optionally log a `TripLog` entry.
  */
 export async function createExpense(_input: CreateExpenseInput): Promise<CreateExpenseResult> {
+  // Boundary validation BEFORE touching the database.
+  // Ensures financial consistency: sum(amount_paid) == total_amount and sum(amount_owed) == total_amount.
+  try {
+    validateCreateExpenseInput(_input);
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      throw new Error(`Invalid createExpense input: ${formatZodError(error)}`);
+    }
+    throw error;
+  }
+
   throw new Error("createExpense is not implemented yet.");
 }
