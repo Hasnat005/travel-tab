@@ -54,6 +54,8 @@ export function TripOverview(props: TripOverviewProps) {
 
   const balanceByUserId = new Map(balances.map((b) => [b.user_id, b.amount]));
 
+  const formatMoney = (amount: number) => `$${Math.abs(amount).toFixed(2)}`;
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
       <div className="rounded-lg border border-black/10 p-4">
@@ -70,14 +72,38 @@ export function TripOverview(props: TripOverviewProps) {
                 const displayName = member.name?.trim() || "Unnamed member";
                 const amount = balanceByUserId.get(member.user_id);
 
+                const isZero = typeof amount === "number" && Math.abs(amount) < 1e-9;
+                const isPositive = typeof amount === "number" && amount > 0;
+                const isNegative = typeof amount === "number" && amount < 0;
+
+                const balanceText =
+                  typeof amount !== "number"
+                    ? "—"
+                    : isZero
+                      ? "Settled"
+                      : isPositive
+                        ? `Get back ${formatMoney(amount)}`
+                        : `Owe ${formatMoney(amount)}`;
+
+                const balanceClassName =
+                  typeof amount !== "number"
+                    ? "text-black/60"
+                    : isZero
+                      ? "text-black/60"
+                      : isPositive
+                        ? "text-green-700"
+                        : "text-red-700";
+
                 return (
                   <li
                     key={member.user_id}
                     className="flex items-center justify-between gap-4 px-3 py-2"
                   >
                     <span className="text-sm">{displayName}</span>
-                    <span className="min-w-24 text-right text-sm tabular-nums">
-                      {typeof amount === "number" ? amount.toFixed(2) : "—"}
+                    <span
+                      className={`min-w-36 text-right text-sm tabular-nums ${balanceClassName}`}
+                    >
+                      {balanceText}
                     </span>
                   </li>
                 );
