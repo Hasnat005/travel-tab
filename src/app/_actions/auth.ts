@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { prisma } from "@/lib/prisma";
 
 function buildRedirectPath(pathname: string, message: string) {
   const params = new URLSearchParams({ message });
@@ -30,7 +31,7 @@ export async function signUp(formData: FormData) {
   const supabase = await createSupabaseServerClient();
   const origin = await getOrigin();
 
-  const { error } = await supabase.auth.signUp({
+  const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
@@ -40,6 +41,27 @@ export async function signUp(formData: FormData) {
 
   if (error) {
     redirect(buildRedirectPath("/signup", error.message));
+  }
+
+  if (data.user) {
+    await prisma.user.upsert({
+      where: { id: data.user.id },
+      create: {
+        id: data.user.id,
+        email: data.user.email ?? `${data.user.id}@example.invalid`,
+        name:
+          typeof data.user.user_metadata?.name === "string"
+            ? data.user.user_metadata.name
+            : null,
+      },
+      update: {
+        email: data.user.email ?? undefined,
+        name:
+          typeof data.user.user_metadata?.name === "string"
+            ? data.user.user_metadata.name
+            : undefined,
+      },
+    });
   }
 
   redirect(
@@ -60,7 +82,7 @@ export async function signIn(formData: FormData) {
 
   const supabase = await createSupabaseServerClient();
 
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password,
   });
@@ -69,7 +91,50 @@ export async function signIn(formData: FormData) {
     redirect(buildRedirectPath("/login", error.message));
   }
 
+  if (data.user) {
+    await prisma.user.upsert({
+      where: { id: data.user.id },
+      create: {
+        id: data.user.id,
+        email: data.user.email ?? `${data.user.id}@example.invalid`,
+        name:
+          typeof data.user.user_metadata?.name === "string"
+            ? data.user.user_metadata.name
+            : null,
+      },
+      update: {
+        email: data.user.email ?? undefined,
+        name:
+          typeof data.user.user_metadata?.name === "string"
+            ? data.user.user_metadata.name
+            : undefined,
+      },
+    });
+  }
+
   redirect("/account");
+}
+
+export async function signInWithGoogle() {
+  const supabase = await createSupabaseServerClient();
+  const origin = await getOrigin();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: {
+      redirectTo: `${origin}/auth/callback`,
+    },
+  });
+
+  if (error) {
+    redirect(buildRedirectPath("/login", error.message));
+  }
+
+  if (!data.url) {
+    redirect(buildRedirectPath("/login", "Failed to start Google sign-in."));
+  }
+
+  redirect(data.url);
 }
 
 export async function signOut() {

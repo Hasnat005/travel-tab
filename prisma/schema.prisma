@@ -11,6 +11,8 @@ model User {
   email String  @unique
   name  String?
 
+  created_at DateTime @default(now())
+
   // Prepared relation (expand Trip model later)
   trips Trip[] @relation("UserTrips")
 
@@ -31,6 +33,9 @@ model Trip {
   start_date  DateTime
   end_date    DateTime
 
+  notes      String?
+  created_at DateTime @default(now())
+
   creator User @relation("UserTrips", fields: [creator_id], references: [id])
 
   members TripMember[]
@@ -46,6 +51,8 @@ model Expense {
   description  String
   total_amount Decimal  @db.Decimal(10, 2)
   date         DateTime
+
+  created_at DateTime @default(now())
 
   trip Trip @relation(fields: [trip_id], references: [id])
 
@@ -97,6 +104,8 @@ model TripLog {
 model TripMember {
   trip_id String @db.Uuid
   user_id String @db.Uuid
+
+  joined_at DateTime @default(now())
 
   trip Trip @relation(fields: [trip_id], references: [id])
   user User @relation(fields: [user_id], references: [id])

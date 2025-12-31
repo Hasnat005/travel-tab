@@ -1,6 +1,9 @@
 import Link from "next/link";
 
-import { signUp } from "@/app/_actions/auth";
+import { signInWithGoogle, signUp } from "@/app/_actions/auth";
+import MaterialCard from "@/components/ui/MaterialCard";
+import MaterialButton from "@/components/ui/MaterialButton";
+import MaterialInput from "@/components/ui/MaterialInput";
 
 export default async function SignupPage({
   searchParams,
@@ -10,64 +13,60 @@ export default async function SignupPage({
   const params = (await searchParams) ?? {};
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 px-4 dark:bg-black">
-      <main className="w-full max-w-md rounded-2xl bg-white p-8 dark:bg-black">
-        <h1 className="text-2xl font-semibold text-black dark:text-zinc-50">
-          Sign up
-        </h1>
+    <div className="mx-auto w-full max-w-md">
+      <MaterialCard>
+        <h1 className="text-2xl font-semibold tracking-tight text-[#E3E3E3]">Sign up</h1>
 
         {params.message ? (
-          <p className="mt-3 rounded-lg border border-black/[.08] px-3 py-2 text-sm text-zinc-700 dark:border-white/[.145] dark:text-zinc-300">
+          <p className="mt-3 rounded-[18px] bg-white/5 px-4 py-3 text-sm text-[#C4C7C5]">
             {params.message}
           </p>
         ) : null}
 
         <form action={signUp} className="mt-6 flex flex-col gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-              Email
-            </span>
-            <input
+            <span className="text-sm font-medium text-[#E3E3E3]">Email</span>
+            <MaterialInput
               name="email"
               type="email"
               required
               autoComplete="email"
-              className="h-11 rounded-lg border border-black/[.08] bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+              placeholder="name@example.com"
             />
           </label>
 
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-              Password
-            </span>
-            <input
+            <span className="text-sm font-medium text-[#E3E3E3]">Password</span>
+            <MaterialInput
               name="password"
               type="password"
               required
               minLength={6}
               autoComplete="new-password"
-              className="h-11 rounded-lg border border-black/[.08] bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
             />
           </label>
 
-          <button
-            type="submit"
-            className="mt-2 flex h-11 items-center justify-center rounded-full bg-foreground px-5 text-background"
-          >
+          <MaterialButton type="submit" variant="filled" className="mt-1 w-full">
             Create account
-          </button>
+          </MaterialButton>
         </form>
 
-        <p className="mt-6 text-sm text-zinc-600 dark:text-zinc-400">
+        <form action={signInWithGoogle} className="mt-3">
+          <MaterialButton type="submit" variant="tonal" className="h-11 w-full">
+            Continue with Google
+          </MaterialButton>
+        </form>
+
+        <p className="mt-6 text-sm text-[#C4C7C5]">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="font-medium text-zinc-950 dark:text-zinc-50"
+            className="font-medium text-[#E3E3E3]"
           >
             Log in
           </Link>
         </p>
-      </main>
+      </MaterialCard>
     </div>
   );
 }

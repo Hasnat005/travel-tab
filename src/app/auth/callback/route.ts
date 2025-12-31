@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getSupabaseEnv } from "@/lib/supabase/env";
+import { prisma } from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -33,6 +34,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(
       new URL(`/login?message=${encodeURIComponent(error.message)}`, url.origin)
     );
+  }
+
+  // Ensure a matching row exists in public.User for FK integrity and invites-by-email.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (user) {
+    await prisma.user.upsert({
+      where: { id: user.id },
+      create: {
+        id: user.id,
+        email: user.email ?? `${user.id}@example.invalid`,
+        name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
+      },
+      update: {
+        email: user.email ?? undefined,
+        name:
+          typeof user.user_metadata?.name === "string" ? user.user_metadata.name : undefined,
+      },
+    });
   }
 
   return response;

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { createExpense } from "@/app/_actions/expenses";
+import { createClient } from "@supabase/supabase-js";
+
+import { createExpenseApiForUserId } from "@/app/_actions/expenses";
+import { prisma } from "@/lib/prisma";
+import { getSupabaseEnv } from "@/lib/supabase/env";
 
 /**
  * POST /api/expenses
@@ -33,6 +37,61 @@ import { createExpense } from "@/app/_actions/expenses";
  *   then maps error codes to HTTP status.
  */
 export async function POST(req: Request) {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Missing Authorization Bearer token.",
+        },
+      },
+      { status: 401 }
+    );
+  }
+
+  const token = match[1]?.trim();
+  if (!token) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Invalid Authorization header.",
+        },
+      },
+      { status: 401 }
+    );
+  }
+
+  const { url: supabaseUrl, anonKey } = getSupabaseEnv();
+  const supabase = createClient(supabaseUrl, anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  });
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "UNAUTHENTICATED",
+          message: "Invalid or expired token.",
+        },
+      },
+      { status: 401 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await req.json();
@@ -49,7 +108,21 @@ export async function POST(req: Request) {
     );
   }
 
-  const result = await createExpense(body);
+  // Ensure a matching row exists in public.User for FK integrity.
+  await prisma.user.upsert({
+    where: { id: user.id },
+    create: {
+      id: user.id,
+      email: user.email ?? `${user.id}@example.invalid`,
+      name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
+    },
+    update: {
+      email: user.email ?? undefined,
+      name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name : undefined,
+    },
+  });
+
+  const result = await createExpenseApiForUserId(body, user.id);
 
   if (result.ok) {
     return NextResponse.json(result, { status: 201 });

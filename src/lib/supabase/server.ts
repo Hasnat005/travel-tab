@@ -24,3 +24,8 @@ export async function createSupabaseServerClient() {
     },
   });
 }
+
+// Alias for consistency with common Supabase examples.
+export async function createClient() {
+  return createSupabaseServerClient();
+}

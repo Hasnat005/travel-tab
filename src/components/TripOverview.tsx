@@ -126,11 +126,11 @@ export function TripOverview(props: TripOverviewProps) {
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
       <div className="space-y-6">
         {/* Header: trip identity and date range. */}
-        <header className="rounded-lg border border-black/10 p-4">
+        <header className="rounded-lg border border-black/10 bg-white p-4 dark:border-white/[.145] dark:bg-black">
           <div className="flex items-start justify-between gap-4">
             <div className="space-y-1">
               <h1 className="text-2xl font-semibold tracking-tight">{trip.name}</h1>
-              <p className="text-sm text-black/60">{dateRange}</p>
+              <p className="text-sm text-black/60 dark:text-zinc-400">{dateRange}</p>
             </div>
 
             {props.children ? <div className="shrink-0">{props.children}</div> : null}
@@ -138,16 +138,20 @@ export function TripOverview(props: TripOverviewProps) {
         </header>
 
         {/* Expenses: optional list of recent expenses. When empty, show a subtle empty state. */}
-        <section className="rounded-lg border border-black/10 p-4">
+        <section className="rounded-lg border border-black/10 bg-white p-4 dark:border-white/[.145] dark:bg-black">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Expenses</h2>
-            <p className="text-sm text-black/60">Recent items added to the trip.</p>
+            <p className="text-sm text-black/60 dark:text-zinc-400">
+              Recent items added to the trip.
+            </p>
           </div>
 
           {expenses.length === 0 ? (
-            <p className="mt-3 text-sm text-black/60">No expenses yet.</p>
+            <p className="mt-3 text-sm text-black/60 dark:text-zinc-400">
+              No expenses yet.
+            </p>
           ) : (
-            <ul className="mt-3 divide-y divide-black/10">
+            <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
               {expenses.map((expense) => (
                 <li
                   key={expense.id}
@@ -164,15 +168,15 @@ export function TripOverview(props: TripOverviewProps) {
         </section>
 
         {/* Balances: expects one balance per member (missing entries render as "—"). */}
-        <section className="rounded-lg border border-black/10 p-4">
+        <section className="rounded-lg border border-black/10 bg-white p-4 dark:border-white/[.145] dark:bg-black">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Balances</h2>
-            <p className="text-sm text-black/60">
+            <p className="text-sm text-black/60 dark:text-zinc-400">
               Net balance per member (after simplification).
             </p>
           </div>
 
-          <ul className="mt-3 divide-y divide-black/10">
+          <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
             {members.map((member) => {
               const displayName = member.name?.trim() || "Unnamed member";
               const amount = balanceByUserId.get(member.user_id);
@@ -191,12 +195,12 @@ export function TripOverview(props: TripOverviewProps) {
 
               const balanceClassName =
                 typeof amount !== "number"
-                  ? "text-black/60"
+                  ? "text-black/60 dark:text-zinc-400"
                   : isZero
-                    ? "text-black/60"
+                    ? "text-black/60 dark:text-zinc-400"
                     : isPositive
-                      ? "text-green-700"
-                      : "text-red-700";
+                      ? "text-green-700 dark:text-green-400"
+                      : "text-red-700 dark:text-red-400";
 
               return (
                 <li
@@ -216,18 +220,20 @@ export function TripOverview(props: TripOverviewProps) {
         </section>
 
         {/* Settlement Plan: simplified payment instructions derived from the debt algorithm output. */}
-        <section className="rounded-lg border border-black/10 p-4">
+        <section className="rounded-lg border border-black/10 bg-white p-4 dark:border-white/[.145] dark:bg-black">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Settlement Plan</h2>
-            <p className="text-sm text-black/60">
+            <p className="text-sm text-black/60 dark:text-zinc-400">
               Suggested payments to settle the trip.
             </p>
           </div>
 
           {settlements.length === 0 ? (
-            <p className="mt-3 text-sm text-black/60">No settlements needed.</p>
+            <p className="mt-3 text-sm text-black/60 dark:text-zinc-400">
+              No settlements needed.
+            </p>
           ) : (
-            <ul className="mt-3 divide-y divide-black/10">
+            <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
               {settlements.map((s, index) => {
                 const payerName =
                   memberNameByUserId.get(s.payer_id) || "Unknown member";
@@ -254,24 +260,30 @@ export function TripOverview(props: TripOverviewProps) {
         </section>
 
         {/* Trip Activity: audit-style log feed (chronological) for informational context. */}
-        <section className="rounded-lg border border-black/10 p-4">
+        <section className="rounded-lg border border-black/10 bg-white p-4 dark:border-white/[.145] dark:bg-black">
           <div className="space-y-1">
             <h2 className="text-base font-semibold tracking-tight">Trip Activity</h2>
-            <p className="text-sm text-black/60">A chronological record of actions.</p>
+            <p className="text-sm text-black/60 dark:text-zinc-400">
+              A chronological record of actions.
+            </p>
           </div>
 
           {sortedLogs.length === 0 ? (
-            <p className="mt-3 text-sm text-black/60">No logs available.</p>
+            <p className="mt-3 text-sm text-black/60 dark:text-zinc-400">
+              No logs available.
+            </p>
           ) : (
-            <ul className="mt-3 divide-y divide-black/10">
+            <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
               {sortedLogs.map((log) => {
                 const relative = formatRelativeTime(log.timestamp);
                 return (
                   <li key={log.id} className="py-2">
-                    <p className="text-sm text-black/70">
+                    <p className="text-sm text-black/70 dark:text-zinc-300">
                       {describeLog(log)}
                       {relative ? (
-                        <span className="text-black/50"> – {relative}</span>
+                        <span className="text-black/50 dark:text-zinc-400">
+                          {" "}– {relative}
+                        </span>
                       ) : null}
                     </p>
                   </li>

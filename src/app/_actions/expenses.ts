@@ -1,9 +1,13 @@
+"use server";
+
 import { z } from "zod";
+
+import { revalidatePath } from "next/cache";
 
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/supabase/server";
 
 /**
  * Server Actions for expense operations.
@@ -66,7 +70,7 @@ function uniqueByUserId<T extends { user_id: string }>(items: T[]): boolean {
  * - `.strict()` rejects unknown keys (hardens against malformed requests)
  * - Currency amounts are validated to be finite and 2-decimal max
  */
-export const createExpenseInputSchema = z
+const createExpenseInputSchema = z
   .object({
     trip_id: z.string().uuid(),
     description: z.string().trim().min(1),
@@ -132,20 +136,18 @@ export const createExpenseInputSchema = z
  * TypeScript input contract for createExpense.
  * Keep this in sync with runtime validation by deriving it from Zod.
  */
-export type CreateExpenseInput = z.infer<typeof createExpenseInputSchema>;
-
-export interface CreateExpenseResult {
+interface CreateExpenseResult {
   /** New expense id (UUID). */
   expense_id: string;
 }
 
-export type CreateExpenseErrorCode =
+type CreateExpenseErrorCode =
   | "VALIDATION_ERROR"
   | "UNAUTHENTICATED"
   | "FORBIDDEN"
   | "INTERNAL_ERROR";
 
-export type CreateExpenseResponse =
+type CreateExpenseResponse =
   | { ok: true; data: CreateExpenseResult }
   | {
       ok: false;
@@ -155,10 +157,6 @@ export type CreateExpenseResponse =
         details?: unknown;
       };
     };
-
-export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
-  return createExpenseInputSchema.parse(input);
-}
 
 /**
  * Creates an expense for a trip.
@@ -188,21 +186,10 @@ export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
  *   performed_by = authenticated user id, and details JSON containing:
  *   expense_id, total_amount, description.
  */
-export async function createExpense(inputRaw: unknown): Promise<CreateExpenseResponse> {
-  "use server";
-
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    return {
-      ok: false,
-      error: { code: "UNAUTHENTICATED", message: "Not authenticated." },
-    };
-  }
-
+async function createExpenseInternal(
+  inputRaw: unknown,
+  userId: string
+): Promise<CreateExpenseResponse> {
   // Boundary validation BEFORE touching the database.
   // Ensures financial consistency: sum(amount_paid) == total_amount and sum(amount_owed) == total_amount.
   const parsed = createExpenseInputSchema.safeParse(inputRaw);
@@ -231,6 +218,10 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
       }): Promise<{ id: string } | null>;
     };
     tripMember: {
+      findMany(args: {
+        where: { trip_id: string };
+        select: { user_id: true };
+      }): Promise<Array<{ user_id: string }>>;
       findUnique(args: {
         where: { trip_id_user_id: { trip_id: string; user_id: string } };
         select: { trip_id: true; user_id: true };
@@ -333,7 +324,7 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
         where: {
           trip_id_user_id: {
             trip_id: input.trip_id,
-            user_id: user.id,
+            user_id: userId,
           },
         },
         select: { trip_id: true, user_id: true },
@@ -341,6 +332,23 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
       if (!membership) {
         // Distinguish from authentication (401).
         return null;
+      }
+
+      // Validation: all referenced payers/shares must be members of this trip.
+      const tripMembers = await tx.tripMember.findMany({
+        where: { trip_id: input.trip_id },
+        select: { user_id: true },
+      });
+      const memberSet = new Set(tripMembers.map((m) => m.user_id));
+
+      const invalidPayer = input.payers.find((p) => !memberSet.has(p.user_id));
+      if (invalidPayer) {
+        throw new Error("All payers must be members of this trip.");
+      }
+
+      const invalidShare = input.shares.find((s) => !memberSet.has(s.user_id));
+      if (invalidShare) {
+        throw new Error("All shares must be members of this trip.");
       }
 
       const expense = await tx.expense.create({
@@ -373,7 +381,7 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
         data: {
           trip: { connect: { id: input.trip_id } },
           action_type: "EXPENSE_CREATED",
-          performer: { connect: { id: user.id } },
+          performer: { connect: { id: userId } },
           details: {
             expense_id: expense.id,
             total_amount: Number(input.total_amount.toFixed(2)),
@@ -410,9 +418,226 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
       };
     }
 
+    if (message === "All payers must be members of this trip." || message === "All shares must be members of this trip.") {
+      return {
+        ok: false,
+        error: { code: "VALIDATION_ERROR", message },
+      };
+    }
+
     return {
       ok: false,
       error: { code: "INTERNAL_ERROR", message: "Failed to create expense." },
     };
   }
+}
+
+export async function createExpenseApi(inputRaw: unknown): Promise<CreateExpenseResponse> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHENTICATED", message: "Not authenticated." },
+    };
+  }
+
+  return createExpenseInternal(inputRaw, user.id);
+}
+
+export async function createExpenseApiForUserId(
+  inputRaw: unknown,
+  userId: string
+): Promise<CreateExpenseResponse> {
+  if (!userId) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHENTICATED", message: "Not authenticated." },
+    };
+  }
+
+  return createExpenseInternal(inputRaw, userId);
+}
+
+type CreateExpenseFormState =
+  | { ok: false; message?: string }
+  | { ok: true; message?: string };
+
+const createExpenseFormSchema = z
+  .object({
+    tripId: z.string().uuid(),
+    description: z.string().trim().min(1, "Description is required"),
+    amount: z
+      .string()
+      .trim()
+      .min(1, "Amount is required")
+      .transform((v) => Number(v))
+      .refine((v) => Number.isFinite(v) && v > 0, "Amount must be greater than 0"),
+    date: z.string().trim().min(1, "Date is required"),
+    payload: z.string().trim().optional(),
+  })
+  .strict();
+
+function parseDateOnly(value: string): Date {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error(`Invalid date: ${value}`);
+  }
+  return date;
+}
+
+function splitCentsEqually(totalCents: number, userIds: string[]) {
+  if (userIds.length === 0) {
+    throw new Error("Cannot split expense with zero members");
+  }
+
+  const base = Math.floor(totalCents / userIds.length);
+  const remainder = totalCents - base * userIds.length;
+
+  return userIds.map((userId, index) => ({
+    user_id: userId,
+    amountCents: base + (index < remainder ? 1 : 0),
+  }));
+}
+
+/**
+ * Form-based Server Action for the app UI.
+ * Assumptions for now:
+ * - "I paid" (current user pays full amount)
+ * - split equally across all current trip members
+ */
+export async function createExpense(
+  _prevState: CreateExpenseFormState,
+  formData: FormData
+): Promise<CreateExpenseFormState> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, message: "Not authenticated." };
+  }
+
+  const parsed = createExpenseFormSchema.safeParse({
+    tripId: formData.get("tripId"),
+    description: formData.get("description"),
+    amount: formData.get("amount"),
+    date: formData.get("date"),
+    payload: formData.get("payload"),
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input" };
+  }
+
+  const { tripId, description, amount, date, payload } = parsed.data;
+
+  // Advanced mode: client provides explicit payers + shares JSON payload.
+  // This enables multi-payer, uneven/partial payments, and custom splits.
+  if (payload) {
+    let inputRaw: unknown;
+    try {
+      inputRaw = JSON.parse(payload);
+    } catch {
+      return { ok: false, message: "Invalid split payload." };
+    }
+
+    // Integrity check: ensure form tripId matches payload trip_id.
+    if (
+      !inputRaw ||
+      typeof inputRaw !== "object" ||
+      typeof (inputRaw as Record<string, unknown>).trip_id !== "string" ||
+      (inputRaw as Record<string, unknown>).trip_id !== tripId
+    ) {
+      return { ok: false, message: "Split payload trip mismatch." };
+    }
+
+    const result = await createExpenseApi(inputRaw);
+    if (!result.ok) {
+      return { ok: false, message: result.error.message };
+    }
+
+    revalidatePath(`/trips/${tripId}`);
+    return { ok: true };
+  }
+
+  const expenseDate = parseDateOnly(date);
+  const totalCents = Math.round((amount + Number.EPSILON) * 100);
+
+  const membership = await prisma.tripMember.findUnique({
+    where: { trip_id_user_id: { trip_id: tripId, user_id: user.id } },
+    select: { trip_id: true },
+  });
+
+  if (!membership) {
+    throw new Error("Unauthorized");
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // Fetch members first to compute equal shares.
+    const members = await tx.tripMember.findMany({
+      where: { trip_id: tripId },
+      select: { user_id: true },
+      orderBy: { user_id: "asc" },
+    });
+
+    const memberIds = members.map((m) => m.user_id);
+    const shares = splitCentsEqually(totalCents, memberIds);
+
+    const expense = await tx.expense.create({
+      data: {
+        trip_id: tripId,
+        description,
+        total_amount: new Prisma.Decimal(amount),
+        date: expenseDate,
+      },
+      select: { id: true },
+    });
+
+    await tx.expensePayer.createMany({
+      data: [
+        {
+          expense_id: expense.id,
+          user_id: user.id,
+          amount_paid: new Prisma.Decimal(amount),
+        },
+      ],
+    });
+
+    await tx.expenseShare.createMany({
+      data: shares.map((s) => ({
+        expense_id: expense.id,
+        user_id: s.user_id,
+        amount_owed: new Prisma.Decimal((s.amountCents / 100).toFixed(2)),
+      })),
+    });
+
+    const performer = await tx.user.findUnique({
+      where: { id: user.id },
+      select: { name: true, email: true },
+    });
+
+    const performerName = performer?.name?.trim() || performer?.email || "User";
+
+    await tx.tripLog.create({
+      data: {
+        trip_id: tripId,
+        action_type: "EXPENSE_CREATED",
+        performed_by: user.id,
+        details: {
+          description,
+          total_amount: Number(amount.toFixed(2)),
+          message: `${performerName} added expense: ${description}`,
+        },
+        timestamp: new Date(),
+      },
+    });
+  });
+
+  revalidatePath(`/trips/${tripId}`);
+  return { ok: true };
 }

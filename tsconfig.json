@@ -20,10 +20,8 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@prisma/client": ["./node_modules/.prisma/client/default"],
-      "@prisma/client/*": ["./node_modules/.prisma/client/*"],
-      ".prisma/*": ["./node_modules/.prisma/*"],
-      ".prisma/client/*": ["./node_modules/.prisma/client/*"]
+      "@prisma/client": ["./node_modules/@prisma/client/.prisma/client/default"],
+      "@prisma/client/*": ["./node_modules/@prisma/client/.prisma/client/*"]
     }
   },
   "include": [
