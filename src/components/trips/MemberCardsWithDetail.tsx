@@ -193,6 +193,8 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
           const isPositive = b.net > 0;
           const isNegative = b.net < 0;
           const netAbs = Math.abs(b.net);
+          const label = b.name?.trim() || b.email;
+          const letter = (label.trim()?.[0] ?? "U").toUpperCase();
 
           return (
             <button
@@ -203,53 +205,57 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
               aria-haspopup="dialog"
             >
               <MaterialCard className="p-5 md:p-8">
-                <div className="space-y-1">
-                  <p className="text-sm font-semibold tracking-tight">{b.name ?? b.email}</p>
-                  <p className="text-xs text-[#C4C7C5]">{b.email}</p>
+                <div className="flex items-center gap-3">
+                  <div
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#2A2A2A] text-sm font-semibold text-[#E3E3E3]"
+                    aria-hidden="true"
+                  >
+                    {letter}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold tracking-tight">{label}</p>
+                  </div>
                 </div>
 
-                <dl className="mt-4 grid grid-cols-3 gap-3">
+                <div className="mt-4 h-px w-full bg-white/10" />
+
+                <div className="mt-4 flex items-baseline justify-between gap-4">
+                  <p
+                    className={
+                      "text-sm font-medium " +
+                      (isPositive
+                        ? "text-green-400"
+                        : isNegative
+                          ? "text-red-400"
+                          : "text-[#C4C7C5]")
+                    }
+                  >
+                    {isPositive ? "Gets back" : isNegative ? "Owes" : "Settled"}
+                  </p>
+                  <p
+                    className={
+                      "text-lg font-semibold tabular-nums " +
+                      (isPositive
+                        ? "text-green-400"
+                        : isNegative
+                          ? "text-red-400"
+                          : "text-[#E3E3E3]")
+                    }
+                  >
+                    {formatCurrency(netAbs)}
+                  </p>
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3">
                   <div>
                     <dt className="text-xs text-[#C4C7C5]">Paid</dt>
                     <dd className="text-sm font-medium tabular-nums">{formatCurrency(b.paid)}</dd>
                   </div>
                   <div>
-                    <dt className="text-xs text-[#C4C7C5]">Owed</dt>
+                    <dt className="text-xs text-[#C4C7C5]">Share</dt>
                     <dd className="text-sm font-medium tabular-nums">{formatCurrency(b.owed)}</dd>
                   </div>
-                  <div>
-                    <dt className="text-xs text-[#C4C7C5]">Net</dt>
-                    <dd
-                      className={
-                        "text-sm font-semibold tabular-nums " +
-                        (isPositive
-                          ? "text-green-400"
-                          : isNegative
-                            ? "text-red-400"
-                            : "text-[#C4C7C5]")
-                      }
-                    >
-                      {formatCurrency(b.net)}
-                    </dd>
-                  </div>
                 </dl>
-
-                <p
-                  className={
-                    "mt-3 text-sm font-medium " +
-                    (isPositive
-                      ? "text-green-400"
-                      : isNegative
-                        ? "text-red-400"
-                        : "text-[#C4C7C5]")
-                  }
-                >
-                  {isPositive
-                    ? `Gets back ${formatCurrency(netAbs)}`
-                    : isNegative
-                      ? `Owes ${formatCurrency(netAbs)}`
-                      : "Settled"}
-                </p>
               </MaterialCard>
             </button>
           );
@@ -261,7 +267,7 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
           role="dialog"
           aria-modal="true"
           aria-labelledby={dialogTitleId}
-          className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4"
+          className="fixed inset-0 z-50"
         >
           <button
             type="button"
@@ -270,25 +276,26 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
             aria-label="Close"
           />
 
-          <div className="relative h-full w-full overflow-auto border border-black/8 bg-white p-5 dark:border-white/[.145] dark:bg-black sm:h-auto sm:max-h-[85vh] sm:max-w-2xl sm:rounded-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div className="space-y-1">
-                <h2 id={dialogTitleId} className="text-lg font-semibold tracking-tight">
+          <div className="fixed right-0 top-0 z-10 h-full w-full max-w-md transform overflow-hidden bg-[#1E1E1E] shadow-2xl transition-transform duration-300">
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4">
+              <div className="min-w-0">
+                <h2 id={dialogTitleId} className="truncate text-base font-semibold tracking-tight text-[#E3E3E3]">
                   {selected.name?.trim() || selected.email}
                 </h2>
-                <p className="text-sm text-black/60 dark:text-zinc-400">{selected.email}</p>
+                <p className="truncate text-sm text-[#C4C7C5]">{selected.email}</p>
               </div>
 
               <button
                 type="button"
                 onClick={close}
-                className="rounded-md px-2 py-1 text-sm text-black/60 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+                className="rounded-full bg-white/5 px-4 py-2 text-sm font-medium text-[#E3E3E3] hover:bg-white/10"
               >
                 Close
               </button>
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="scrollbar-hide -mx-4 mt-3 overflow-x-auto px-4">
+              <div className="flex w-max items-center gap-2 whitespace-nowrap pb-2">
               {(
                 [
                   ["overview", "Overview"],
@@ -302,51 +309,65 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                   type="button"
                   onClick={() => setTab(key)}
                   className={
-                    "inline-flex h-9 items-center justify-center rounded-full border px-4 text-sm font-medium transition-colors " +
+                    "inline-flex h-9 items-center justify-center rounded-full px-4 text-sm font-medium transition-colors " +
                     (tab === key
-                      ? "border-black/15 bg-black/5 text-black dark:border-white/20 dark:bg-white/10 dark:text-zinc-50"
-                      : "border-black/8 text-black/70 hover:bg-black/4 dark:border-white/[.145] dark:text-zinc-300 dark:hover:bg-white/10")
+                      ? "bg-[#333537] text-[#E3E3E3]"
+                      : "bg-transparent text-[#C4C7C5] hover:bg-white/5 hover:text-[#E3E3E3]")
                   }
                 >
                   {label}
                 </button>
               ))}
+              </div>
             </div>
 
+            <div className="h-[calc(100%-112px)] overflow-y-auto p-4">
+
             {tab === "overview" ? (
-              <div className="mt-5 space-y-4">
-                <div className="rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                  <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Overview</p>
+              <div className="space-y-4">
+                <MaterialCard className="p-4">
+                  <p className="text-sm font-semibold tracking-tight">Your balance</p>
                   <dl className="mt-3 grid grid-cols-3 gap-3">
                     <div>
-                      <dt className="text-xs text-black/60 dark:text-zinc-400">Total Paid</dt>
+                      <dt className="text-xs text-[#C4C7C5]">You paid</dt>
                       <dd className="text-sm font-semibold tabular-nums">{formatCurrency(selected.paid)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-black/60 dark:text-zinc-400">Total Owed</dt>
+                      <dt className="text-xs text-[#C4C7C5]">Your share</dt>
                       <dd className="text-sm font-semibold tabular-nums">{formatCurrency(selected.owed)}</dd>
                     </div>
                     <div>
-                      <dt className="text-xs text-black/60 dark:text-zinc-400">Net Balance</dt>
-                      <dd className="text-sm font-semibold tabular-nums">{formatCurrency(selected.net)}</dd>
+                      <dt className="text-xs text-[#C4C7C5]">Net</dt>
+                      <dd
+                        className={
+                          "text-sm font-semibold tabular-nums " +
+                          (selected.net > 0
+                            ? "text-green-400"
+                            : selected.net < 0
+                              ? "text-red-400"
+                              : "text-[#C4C7C5]")
+                        }
+                      >
+                        {formatCurrency(selected.net)}
+                      </dd>
                     </div>
                   </dl>
 
-                  <p className="mt-3 text-sm text-black/70 dark:text-zinc-300">
+                  <p className="mt-3 text-sm text-[#C4C7C5]">
                     {selected.net > 0
-                      ? `Settlement Status: Gets back ${formatCurrency(Math.abs(selected.net))}`
+                      ? `You get back ${formatCurrency(Math.abs(selected.net))}`
                       : selected.net < 0
-                        ? `Settlement Status: Owes ${formatCurrency(Math.abs(selected.net))}`
-                        : "Settlement Status: Settled"}
+                        ? `You owe ${formatCurrency(Math.abs(selected.net))}`
+                        : "Everyone is settled up"}
                   </p>
-                </div>
+                </MaterialCard>
 
-                <div className="rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                  <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Net effect per expense</p>
+                <MaterialCard className="p-4">
+                  <p className="text-sm font-semibold tracking-tight">Per expense breakdown</p>
                   {netPerExpense.length === 0 ? (
-                    <p className="mt-2 text-sm text-black/60 dark:text-zinc-400">No activity yet.</p>
+                    <p className="mt-2 text-sm text-[#C4C7C5]">No activity yet.</p>
                   ) : (
-                    <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
+                    <ul className="mt-3 divide-y divide-white/10">
                       {netPerExpense.map((row) => {
                         const isPositive = row.net > 0;
                         const isNegative = row.net < 0;
@@ -355,22 +376,22 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                             <div className="flex items-start justify-between gap-4">
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-medium">{row.description}</p>
-                                <p className="text-xs text-black/50 dark:text-zinc-400">{formatDate(row.date)}</p>
+                                <p className="text-xs text-[#C4C7C5]">{formatDate(row.date)}</p>
                               </div>
                               <div className="text-right">
                                 <p
                                   className={
                                     "text-sm font-semibold tabular-nums " +
                                     (isPositive
-                                      ? "text-green-600 dark:text-green-400"
+                                      ? "text-green-400"
                                       : isNegative
-                                        ? "text-red-600 dark:text-red-400"
-                                        : "text-black/70 dark:text-zinc-300")
+                                        ? "text-red-400"
+                                        : "text-[#C4C7C5]")
                                   }
                                 >
                                   {formatCurrency(row.net)}
                                 </p>
-                                <p className="text-xs text-black/50 dark:text-zinc-400">
+                                <p className="text-xs text-[#C4C7C5]">
                                   Paid {formatCurrency(row.paid)} · Owed {formatCurrency(row.owed)}
                                 </p>
                               </div>
@@ -380,32 +401,32 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                       })}
                     </ul>
                   )}
-                </div>
+                </MaterialCard>
               </div>
             ) : null}
 
             {tab === "paid" ? (
-              <div className="mt-5 rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Paid expenses</p>
+              <MaterialCard className="p-4">
+                <p className="text-sm font-semibold tracking-tight">Paid expenses</p>
                 {paidLog.length === 0 ? (
-                  <p className="mt-2 text-sm text-black/60 dark:text-zinc-400">No paid expenses yet.</p>
+                  <p className="mt-2 text-sm text-[#C4C7C5]">No paid expenses yet.</p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
+                  <ul className="mt-3 divide-y divide-white/10">
                     {paidLog.map((row) => (
                       <li key={row.expense_id} className="py-2">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{row.description}</p>
-                            <p className="text-xs text-black/50 dark:text-zinc-400">{formatDate(row.date)}</p>
+                            <p className="text-xs text-[#C4C7C5]">{formatDate(row.date)}</p>
                             {row.payersLabel ? (
-                              <p className="mt-1 text-xs text-black/60 dark:text-zinc-400">
+                              <p className="mt-1 text-xs text-[#C4C7C5]">
                                 Payers: {row.payersLabel}
                               </p>
                             ) : null}
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-semibold tabular-nums">{formatCurrency(row.amount_paid)}</p>
-                            <p className="text-xs text-black/50 dark:text-zinc-400">
+                            <p className="text-xs text-[#C4C7C5]">
                               Total {formatCurrency(row.total_amount)}
                             </p>
                           </div>
@@ -414,29 +435,29 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                     ))}
                   </ul>
                 )}
-              </div>
+              </MaterialCard>
             ) : null}
 
             {tab === "owed" ? (
-              <div className="mt-5 rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Owed expenses</p>
+              <MaterialCard className="p-4">
+                <p className="text-sm font-semibold tracking-tight">Owed expenses</p>
                 {owedLog.length === 0 ? (
-                  <p className="mt-2 text-sm text-black/60 dark:text-zinc-400">No owed expenses yet.</p>
+                  <p className="mt-2 text-sm text-[#C4C7C5]">No owed expenses yet.</p>
                 ) : (
-                  <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
+                  <ul className="mt-3 divide-y divide-white/10">
                     {owedLog.map((row) => (
                       <li key={row.expense_id} className="py-2">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
                             <p className="truncate text-sm font-medium">{row.description}</p>
-                            <p className="text-xs text-black/50 dark:text-zinc-400">{formatDate(row.date)}</p>
-                            <p className="mt-1 text-xs text-black/60 dark:text-zinc-400">
+                            <p className="text-xs text-[#C4C7C5]">{formatDate(row.date)}</p>
+                            <p className="mt-1 text-xs text-[#C4C7C5]">
                               Split type: {row.split_type}
                             </p>
                           </div>
                           <div className="text-right">
                             <p className="text-sm font-semibold tabular-nums">{formatCurrency(row.amount_owed)}</p>
-                            <p className="text-xs text-black/50 dark:text-zinc-400">
+                            <p className="text-xs text-[#C4C7C5]">
                               Total {formatCurrency(row.total_amount)}
                             </p>
                           </div>
@@ -445,19 +466,19 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                     ))}
                   </ul>
                 )}
-              </div>
+              </MaterialCard>
             ) : null}
 
             {tab === "settlement" ? (
-              <div className="mt-5 space-y-4">
-                <div className="rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                  <p className="text-sm font-medium text-black/80 dark:text-zinc-200">
+              <div className="space-y-4">
+                <MaterialCard className="p-4">
+                  <p className="text-sm font-semibold tracking-tight">
                     Who this member needs to pay
                   </p>
                   {settlementPreview.pays.length === 0 ? (
-                    <p className="mt-2 text-sm text-black/60 dark:text-zinc-400">No payments needed.</p>
+                    <p className="mt-2 text-sm text-[#C4C7C5]">No payments needed.</p>
                   ) : (
-                    <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
+                    <ul className="mt-3 divide-y divide-white/10">
                       {settlementPreview.pays.map((s, idx) => {
                         const payee = memberLabelById.get(s.payee_id) ?? "Unknown member";
                         return (
@@ -471,16 +492,16 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                       })}
                     </ul>
                   )}
-                </div>
+                </MaterialCard>
 
-                <div className="rounded-lg border border-black/8 p-4 dark:border-white/[.145]">
-                  <p className="text-sm font-medium text-black/80 dark:text-zinc-200">
+                <MaterialCard className="p-4">
+                  <p className="text-sm font-semibold tracking-tight">
                     Who needs to pay this member
                   </p>
                   {settlementPreview.gets.length === 0 ? (
-                    <p className="mt-2 text-sm text-black/60 dark:text-zinc-400">No one owes them in the settlement plan.</p>
+                    <p className="mt-2 text-sm text-[#C4C7C5]">No one owes them in the settlement plan.</p>
                   ) : (
-                    <ul className="mt-3 divide-y divide-black/10 dark:divide-white/[.145]">
+                    <ul className="mt-3 divide-y divide-white/10">
                       {settlementPreview.gets.map((s, idx) => {
                         const payer = memberLabelById.get(s.payer_id) ?? "Unknown member";
                         return (
@@ -494,9 +515,10 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
                       })}
                     </ul>
                   )}
-                </div>
+                </MaterialCard>
               </div>
             ) : null}
+            </div>
           </div>
         </div>
       ) : null}

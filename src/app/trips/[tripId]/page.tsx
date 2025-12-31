@@ -151,6 +151,8 @@ export default async function TripDetailsPage({
     };
   });
 
+  const yourBalance = memberBalances.find((m) => m.user_id === user.id) ?? null;
+
   // Serialize expenses for client-side member detail modal (no Decimal/Date across boundary).
   const clientExpenses = trip.expenses.map((e) => ({
     id: e.id,
@@ -191,10 +193,10 @@ export default async function TripDetailsPage({
 
   const tabItems = [
     { key: "overview", label: "Overview" },
-    { key: "expenses", label: "Expenses" },
-    { key: "settlement", label: "Settlement" },
-    { key: "team", label: "Team" },
-    { key: "activity", label: "Activity" },
+    { key: "expenses", label: `Expenses (${trip.expenses.length})` },
+    { key: "settlement", label: settlements.length > 0 ? `Settlement (${settlements.length})` : "Settlement" },
+    { key: "team", label: `Team (${trip.members.length})` },
+    { key: "activity", label: `Activity (${trip.logs.length})` },
     { key: "settings", label: "Settings" },
   ] as const;
 
@@ -210,14 +212,49 @@ export default async function TripDetailsPage({
     <div className="-mx-4 -my-4 flex flex-col gap-6 p-4 md:-mx-6 md:-my-6 md:grid md:grid-cols-12 md:gap-8 md:p-8 lg:-mx-8 lg:-my-8">
       <div className="md:col-span-12">
         <MaterialCard>
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{trip.name}</h1>
-          <p className="text-sm text-[#C4C7C5]">
-            {trip.destination} · {formatDate(trip.start_date)} → {formatDate(trip.end_date)}
-          </p>
-          <p className="pt-2 text-2xl font-semibold tabular-nums md:text-3xl">
-            {formatCurrency(totalTripCost)}
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{trip.name}</h1>
+            <p className="text-sm text-[#C4C7C5]">
+              {trip.destination} · {formatDate(trip.start_date)} → {formatDate(trip.end_date)}
+            </p>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
+              <p className="text-xs font-medium text-[#C4C7C5]">Total spent</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums md:text-3xl">
+                {formatCurrency(totalTripCost)}
+              </p>
+            </div>
+
+            <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
+              <p className="text-xs font-medium text-[#C4C7C5]">Your balance</p>
+              <p
+                className={
+                  "mt-2 text-2xl font-semibold tabular-nums md:text-3xl " +
+                  (yourBalance
+                    ? yourBalance.net > 0
+                      ? "text-green-400"
+                      : yourBalance.net < 0
+                        ? "text-red-400"
+                        : "text-[#E3E3E3]"
+                    : "text-[#E3E3E3]")
+                }
+              >
+                {formatCurrency(Math.abs(yourBalance?.net ?? 0))}
+              </p>
+              <p className="mt-1 text-sm text-[#C4C7C5]">
+                {yourBalance
+                  ? yourBalance.net > 0
+                    ? `You get back ${formatCurrency(Math.abs(yourBalance.net))}`
+                    : yourBalance.net < 0
+                      ? `You owe ${formatCurrency(Math.abs(yourBalance.net))}`
+                      : "Everyone is settled up"
+                  : ""}
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="scrollbar-hide -mx-4 mt-5 overflow-x-auto px-4">
@@ -260,6 +297,41 @@ export default async function TripDetailsPage({
                   expenses={clientExpenses}
                   settlements={settlements}
                 />
+              </MaterialCard>
+
+              <MaterialCard>
+                <div className="flex items-baseline justify-between gap-4">
+                  <div className="space-y-1">
+                    <h2 className="text-base font-semibold tracking-tight">Recent expenses</h2>
+                    <p className="text-sm text-[#C4C7C5]">Last 3 expenses added.</p>
+                  </div>
+                  <Link
+                    href={`/trips/${tripId}?tab=expenses`}
+                    className="text-sm font-medium text-[#A8C7FA] hover:underline"
+                  >
+                    View all
+                  </Link>
+                </div>
+
+                {trip.expenses.length === 0 ? (
+                  <p className="mt-3 text-sm text-[#C4C7C5]">Add your first expense to start splitting.</p>
+                ) : (
+                  <ul className="mt-4 divide-y divide-white/10">
+                    {trip.expenses.slice(0, 3).map((e) => (
+                      <li key={e.id} className="py-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-medium text-[#E3E3E3]">{e.description}</p>
+                            <p className="text-xs text-[#C4C7C5]">{formatDate(e.date)}</p>
+                          </div>
+                          <p className="text-sm font-semibold tabular-nums text-[#E3E3E3]">
+                            {formatCurrency(e.total_amount.toNumber())}
+                          </p>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </MaterialCard>
             </>
           ) : null}
