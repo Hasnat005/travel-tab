@@ -47,11 +47,20 @@ export interface TripOverviewProps {
   children?: ReactNode;
 }
 
-export function TripOverview(_props: TripOverviewProps) {
+export function TripOverview(props: TripOverviewProps) {
+  const { trip } = props;
+
+  const dateRange = `${trip.start_date} → ${trip.end_date}`;
+
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
       <div className="rounded-lg border border-black/10 p-4">
-        {/* Structure-only component: UI sections will be added later. */}
+        <header className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">{trip.name}</h1>
+          <p className="text-sm text-black/60">{dateRange}</p>
+        </header>
+
+        {/* Other dashboard sections will be added later. */}
       </div>
     </div>
   );
