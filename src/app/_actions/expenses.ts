@@ -59,7 +59,7 @@ export const createExpenseInputSchema = z
         z
           .object({
             user_id: z.string().uuid(),
-            amount_paid: moneySchema,
+            amount_paid: moneySchema.refine((v) => v > 0, "amount_paid must be > 0"),
           })
           .strict()
       )
@@ -155,6 +155,7 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
   // it usually means Prisma Client types are stale in the TS server. `next build` should be the source of truth.
   // This cast avoids blocking development while keeping runtime behavior the same.
   type PrismaClientForExpenses = {
+    $transaction<T>(fn: (tx: PrismaClientForExpenses) => Promise<T>): Promise<T>;
     trip: {
       findUnique(args: {
         where: { id: string };
@@ -172,29 +173,57 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
         select: { id: true };
       }): Promise<{ id: string }>;
     };
+    expensePayer: {
+      createMany(args: {
+        data: Array<{
+          expense_id: string;
+          user_id: string;
+          amount_paid: Prisma.Decimal;
+        }>;
+      }): Promise<{ count: number }>;
+    };
   };
 
   const prismaClient = prisma as unknown as PrismaClientForExpenses;
 
-  // Ensure the expense is linked to the correct trip.
-  // We do an explicit existence check so we can return a clear error.
-  const trip = await prismaClient.trip.findUnique({
-    where: { id: input.trip_id },
-    select: { id: true },
-  });
-  if (!trip) {
-    throw new Error(`Trip not found: ${input.trip_id}`);
+  if (!uniqueByUserId(input.payers)) {
+    throw new Error("Duplicate payer user_id values are not allowed.");
+  }
+  if (input.payers.some((p) => p.amount_paid <= 0)) {
+    throw new Error("All payer amounts must be > 0.");
   }
 
-  const expense = await prismaClient.expense.create({
-    data: {
-      trip: { connect: { id: input.trip_id } },
-      description: input.description,
-      total_amount: new Prisma.Decimal(input.total_amount),
-      date: new Date(input.date),
-    },
-    select: { id: true },
+  const expenseId = await prismaClient.$transaction(async (tx) => {
+    // Ensure the expense is linked to the correct trip.
+    // We do an explicit existence check so we can return a clear error.
+    const trip = await tx.trip.findUnique({
+      where: { id: input.trip_id },
+      select: { id: true },
+    });
+    if (!trip) {
+      throw new Error(`Trip not found: ${input.trip_id}`);
+    }
+
+    const expense = await tx.expense.create({
+      data: {
+        trip: { connect: { id: input.trip_id } },
+        description: input.description,
+        total_amount: new Prisma.Decimal(input.total_amount),
+        date: new Date(input.date),
+      },
+      select: { id: true },
+    });
+
+    await tx.expensePayer.createMany({
+      data: input.payers.map((payer) => ({
+        expense_id: expense.id,
+        user_id: payer.user_id,
+        amount_paid: new Prisma.Decimal(payer.amount_paid),
+      })),
+    });
+
+    return expense.id;
   });
 
-  return { expense_id: expense.id };
+  return { expense_id: expenseId };
 }
