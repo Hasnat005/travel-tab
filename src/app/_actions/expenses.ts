@@ -1,5 +1,3 @@
-"use server";
-
 import { z } from "zod";
 
 import { Prisma } from "@prisma/client";
@@ -118,49 +116,64 @@ export interface CreateExpenseResult {
   expense_id: string;
 }
 
+export type CreateExpenseErrorCode =
+  | "VALIDATION_ERROR"
+  | "UNAUTHENTICATED"
+  | "FORBIDDEN"
+  | "INTERNAL_ERROR";
+
+export type CreateExpenseResponse =
+  | { ok: true; data: CreateExpenseResult }
+  | {
+      ok: false;
+      error: {
+        code: CreateExpenseErrorCode;
+        message: string;
+        details?: unknown;
+      };
+    };
+
 export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
   return createExpenseInputSchema.parse(input);
-}
-
-function formatZodError(error: z.ZodError): string {
-  return error.issues
-    .map((issue) => {
-      const path = issue.path.length ? issue.path.join(".") : "input";
-      return `${path}: ${issue.message}`;
-    })
-    .join("; ");
 }
 
 /**
  * Creates an expense for a trip.
  *
- * Intent:
- * - Validate the caller is authenticated and a member of the trip.
- * - Insert Expense + related payers/shares (transactional).
- * - Optionally log a `TripLog` entry.
+ * Returns a predictable response shape:
+ * - Success: { ok: true, data: { expense_id } }
+ * - Failure: { ok: false, error: { code, message, details? } }
  */
-export async function createExpense(_input: CreateExpenseInput): Promise<CreateExpenseResult> {
+export async function createExpense(inputRaw: unknown): Promise<CreateExpenseResponse> {
+  "use server";
+
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
-    error: authError,
   } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    throw new Error("Not authenticated.");
+  if (!user) {
+    return {
+      ok: false,
+      error: { code: "UNAUTHENTICATED", message: "Not authenticated." },
+    };
   }
 
   // Boundary validation BEFORE touching the database.
   // Ensures financial consistency: sum(amount_paid) == total_amount and sum(amount_owed) == total_amount.
-  let input: CreateExpenseInput;
-  try {
-    input = validateCreateExpenseInput(_input);
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      throw new Error(`Invalid createExpense input: ${formatZodError(error)}`);
-    }
-    throw error;
+  const parsed = createExpenseInputSchema.safeParse(inputRaw);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Invalid createExpense input.",
+        details: parsed.error.flatten(),
+      },
+    };
   }
+
+  const input = parsed.data;
 
   // NOTE: If your editor shows red squiggles like "Property 'trip' does not exist on type PrismaClient",
   // it usually means Prisma Client types are stale in the TS server. `next build` should be the source of truth.
@@ -172,6 +185,12 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
         where: { id: string };
         select: { id: true };
       }): Promise<{ id: string } | null>;
+    };
+    tripMember: {
+      findUnique(args: {
+        where: { trip_id_user_id: { trip_id: string; user_id: string } };
+        select: { trip_id: true; user_id: true };
+      }): Promise<{ trip_id: string; user_id: string } | null>;
     };
     expense: {
       create(args: {
@@ -231,60 +250,103 @@ export async function createExpense(_input: CreateExpenseInput): Promise<CreateE
     throw new Error("All share amounts must be > 0.");
   }
 
-  const expenseId = await prismaClient.$transaction(async (tx) => {
-    // Ensure the expense is linked to the correct trip.
-    // We do an explicit existence check so we can return a clear error.
-    const trip = await tx.trip.findUnique({
-      where: { id: input.trip_id },
-      select: { id: true },
+  try {
+    const expenseId = await prismaClient.$transaction(async (tx) => {
+      // Ensure the expense is linked to the correct trip.
+      // We do an explicit existence check so we can return a clear error.
+      const trip = await tx.trip.findUnique({
+        where: { id: input.trip_id },
+        select: { id: true },
+      });
+      if (!trip) {
+        throw new Error("Trip not found.");
+      }
+
+      // Authorization: must be a member of the trip.
+      const membership = await tx.tripMember.findUnique({
+        where: {
+          trip_id_user_id: {
+            trip_id: input.trip_id,
+            user_id: user.id,
+          },
+        },
+        select: { trip_id: true, user_id: true },
+      });
+      if (!membership) {
+        // Distinguish from authentication (401).
+        return null;
+      }
+
+      const expense = await tx.expense.create({
+        data: {
+          trip: { connect: { id: input.trip_id } },
+          description: input.description,
+          total_amount: new Prisma.Decimal(input.total_amount),
+          date: new Date(input.date),
+        },
+        select: { id: true },
+      });
+
+      await tx.expensePayer.createMany({
+        data: input.payers.map((payer) => ({
+          expense_id: expense.id,
+          user_id: payer.user_id,
+          amount_paid: new Prisma.Decimal(payer.amount_paid),
+        })),
+      });
+
+      await tx.expenseShare.createMany({
+        data: input.shares.map((share) => ({
+          expense_id: expense.id,
+          user_id: share.user_id,
+          amount_owed: new Prisma.Decimal(share.amount_owed),
+        })),
+      });
+
+      await tx.tripLog.create({
+        data: {
+          trip: { connect: { id: input.trip_id } },
+          action_type: "EXPENSE_CREATED",
+          performer: { connect: { id: user.id } },
+          details: {
+            expense_id: expense.id,
+            total_amount: Number(input.total_amount.toFixed(2)),
+            description: input.description,
+          },
+          timestamp: new Date(),
+        },
+        select: { id: true },
+      });
+
+      return expense.id;
     });
-    if (!trip) {
-      throw new Error(`Trip not found: ${input.trip_id}`);
+
+    if (expenseId === null) {
+      return {
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "You are not a member of this trip.",
+        },
+      };
     }
 
-    const expense = await tx.expense.create({
-      data: {
-        trip: { connect: { id: input.trip_id } },
-        description: input.description,
-        total_amount: new Prisma.Decimal(input.total_amount),
-        date: new Date(input.date),
-      },
-      select: { id: true },
-    });
+    return { ok: true, data: { expense_id: expenseId } };
+  } catch (error) {
+    // Transaction / unexpected failure
+    const message =
+      error instanceof Error ? error.message : "Failed to create expense.";
 
-    await tx.expensePayer.createMany({
-      data: input.payers.map((payer) => ({
-        expense_id: expense.id,
-        user_id: payer.user_id,
-        amount_paid: new Prisma.Decimal(payer.amount_paid),
-      })),
-    });
+    if (message === "Trip not found.") {
+      return {
+        ok: false,
+        error: { code: "VALIDATION_ERROR", message },
+      };
+    }
 
-    await tx.expenseShare.createMany({
-      data: input.shares.map((share) => ({
-        expense_id: expense.id,
-        user_id: share.user_id,
-        amount_owed: new Prisma.Decimal(share.amount_owed),
-      })),
-    });
-
-    await tx.tripLog.create({
-      data: {
-        trip: { connect: { id: input.trip_id } },
-        action_type: "EXPENSE_CREATED",
-        performer: { connect: { id: user.id } },
-        details: {
-          expense_id: expense.id,
-          total_amount: Number(input.total_amount.toFixed(2)),
-          description: input.description,
-        },
-        timestamp: new Date(),
-      },
-      select: { id: true },
-    });
-
-    return expense.id;
-  });
-
-  return { expense_id: expenseId };
+    return {
+      ok: false,
+      error: { code: "INTERNAL_ERROR", message: "Failed to create expense." },
+    };
+  }
 }
