@@ -48,11 +48,14 @@ export interface TripOverviewProps {
 }
 
 export function TripOverview(props: TripOverviewProps) {
-  const { trip, members, balances } = props;
+  const { trip, members, balances, settlements } = props;
 
   const dateRange = `${trip.start_date} → ${trip.end_date}`;
 
   const balanceByUserId = new Map(balances.map((b) => [b.user_id, b.amount]));
+  const memberNameByUserId = new Map(
+    members.map((m) => [m.user_id, m.name?.trim() || "Unnamed member"]),
+  );
 
   const formatMoney = (amount: number) => `$${Math.abs(amount).toFixed(2)}`;
 
@@ -109,6 +112,41 @@ export function TripOverview(props: TripOverviewProps) {
                 );
               })}
             </ul>
+          </div>
+        </section>
+
+        <section className="mt-6">
+          <h2 className="text-base font-semibold tracking-tight">Settlement Plan</h2>
+          <div className="mt-3 rounded-md border border-black/10">
+            {settlements.length === 0 ? (
+              <p className="px-3 py-3 text-sm text-black/60">
+                No settlements needed.
+              </p>
+            ) : (
+              <ul className="divide-y divide-black/10">
+                {settlements.map((s, index) => {
+                  const payerName =
+                    memberNameByUserId.get(s.payer_id) || "Unknown member";
+                  const payeeName =
+                    memberNameByUserId.get(s.payee_id) || "Unknown member";
+
+                  return (
+                    <li
+                      key={`${s.payer_id}-${s.payee_id}-${index}`}
+                      className="flex items-center justify-between gap-4 px-3 py-2"
+                    >
+                      <span className="text-sm">
+                        <span className="font-medium">{payerName}</span> pays{" "}
+                        <span className="font-medium">{payeeName}</span>
+                      </span>
+                      <span className="min-w-24 text-right text-sm tabular-nums font-medium">
+                        {formatMoney(s.amount)}
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
         </section>
       </div>
