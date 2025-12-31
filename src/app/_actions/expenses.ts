@@ -16,6 +16,29 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * If we later need third-party / mobile clients, we can add `app/api/expenses` Route Handlers in addition.
  */
 
+/**
+ * createExpense input contract (runtime validated)
+ *
+ * Expected input:
+ * - trip_id: UUID string
+ * - description: non-empty string
+ * - total_amount: number (> 0) with at most 2 decimal places
+ * - date: ISO-ish date string parseable by `Date.parse`
+ * - payers[]: at least 1 entry
+ *   - user_id: UUID string
+ *   - amount_paid: number (> 0) with at most 2 decimal places
+ * - shares[]: at least 1 entry
+ *   - user_id: UUID string
+ *   - amount_owed: number (> 0) with at most 2 decimal places
+ *
+ * Validation rules:
+ * - Unknown keys are rejected (`.strict()` on all objects)
+ * - No duplicate user_id values in `payers` or `shares`
+ * - Financial boundary enforcement (in cents):
+ *   - sum(payers.amount_paid) === total_amount
+ *   - sum(shares.amount_owed) === total_amount
+ */
+
 const moneySchema = z
   .number()
   .finite()
@@ -140,9 +163,30 @@ export function validateCreateExpenseInput(input: unknown): CreateExpenseInput {
 /**
  * Creates an expense for a trip.
  *
- * Returns a predictable response shape:
+ * Returns a predictable response shape (usable by both Server Actions and Route Handlers):
  * - Success: { ok: true, data: { expense_id } }
  * - Failure: { ok: false, error: { code, message, details? } }
+ *
+ * Error code semantics:
+ * - VALIDATION_ERROR: malformed input, sums don't match, or trip_id doesn't exist
+ * - UNAUTHENTICATED: no signed-in user
+ * - FORBIDDEN: user is signed in but not a member of the trip
+ * - INTERNAL_ERROR: unexpected / transactional failure
+ *
+ * Transaction behavior:
+ * - All database writes are performed within a single Prisma `$transaction`:
+ *   1) verify trip exists
+ *   2) verify caller is a TripMember (authorization)
+ *   3) create Expense
+ *   4) createMany ExpensePayer rows
+ *   5) createMany ExpenseShare rows
+ *   6) create TripLog audit record (EXPENSE_CREATED)
+ * - Any failure rolls back all writes.
+ *
+ * Side effects (audit logs):
+ * - On success, a TripLog row is inserted with action_type EXPENSE_CREATED,
+ *   performed_by = authenticated user id, and details JSON containing:
+ *   expense_id, total_amount, description.
  */
 export async function createExpense(inputRaw: unknown): Promise<CreateExpenseResponse> {
   "use server";
@@ -238,16 +282,38 @@ export async function createExpense(inputRaw: unknown): Promise<CreateExpenseRes
   const prismaClient = prisma as unknown as PrismaClientForExpenses;
 
   if (!uniqueByUserId(input.payers)) {
-    throw new Error("Duplicate payer user_id values are not allowed.");
+    // Defensive check (schema already enforces this).
+    return {
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Duplicate payer user_id values are not allowed.",
+      },
+    };
   }
   if (input.payers.some((p) => p.amount_paid <= 0)) {
-    throw new Error("All payer amounts must be > 0.");
+    // Defensive check (schema already enforces this).
+    return {
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: "All payer amounts must be > 0." },
+    };
   }
   if (!uniqueByUserId(input.shares)) {
-    throw new Error("Duplicate share user_id values are not allowed.");
+    // Defensive check (schema already enforces this).
+    return {
+      ok: false,
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "Duplicate share user_id values are not allowed.",
+      },
+    };
   }
   if (input.shares.some((s) => s.amount_owed <= 0)) {
-    throw new Error("All share amounts must be > 0.");
+    // Defensive check (schema already enforces this).
+    return {
+      ok: false,
+      error: { code: "VALIDATION_ERROR", message: "All share amounts must be > 0." },
+    };
   }
 
   try {

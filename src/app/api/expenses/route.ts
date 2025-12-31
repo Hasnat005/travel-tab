@@ -16,6 +16,21 @@ import { createExpense } from "@/app/_actions/expenses";
  * - Authentication errors: 401
  * - Authorization errors: 403
  * - Transaction/internal errors: 500
+ *
+ * Expected input JSON:
+ * {
+ *   trip_id: string,
+ *   description: string,
+ *   total_amount: number,
+ *   date: string,
+ *   payers: Array<{ user_id: string, amount_paid: number }>,
+ *   shares: Array<{ user_id: string, amount_owed: number }>
+ * }
+ *
+ * Notes:
+ * - Detailed validation rules live in the Zod schema in the Server Action module.
+ * - This handler is thin by design: it parses JSON, delegates to createExpense,
+ *   then maps error codes to HTTP status.
  */
 export async function POST(req: Request) {
   let body: unknown;
