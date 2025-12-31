@@ -19,6 +19,15 @@ export interface TripOverviewBalance {
   amount: number;
 }
 
+export interface TripOverviewExpense {
+  id: string;
+  description: string;
+  /** Total amount in trip currency. */
+  total_amount: number;
+  /** ISO timestamp string. */
+  created_at?: string;
+}
+
 export interface TripOverviewSettlement {
   /** Debtor (sender). */
   payer_id: string;
@@ -39,6 +48,7 @@ export interface TripOverviewLog {
 export interface TripOverviewProps {
   trip: TripOverviewTrip;
   members: TripOverviewMember[];
+  expenses?: TripOverviewExpense[];
   balances: TripOverviewBalance[];
   settlements: TripOverviewSettlement[];
   logs: TripOverviewLog[];
@@ -48,7 +58,7 @@ export interface TripOverviewProps {
 }
 
 export function TripOverview(props: TripOverviewProps) {
-  const { trip, members, balances, settlements, logs } = props;
+  const { trip, members, balances, settlements, logs, expenses = [] } = props;
 
   const dateRange = `${trip.start_date} → ${trip.end_date}`;
 
@@ -116,6 +126,31 @@ export function TripOverview(props: TripOverviewProps) {
             {props.children ? <div className="shrink-0">{props.children}</div> : null}
           </div>
         </header>
+
+        <section className="rounded-lg border border-black/10 p-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold tracking-tight">Expenses</h2>
+            <p className="text-sm text-black/60">Recent items added to the trip.</p>
+          </div>
+
+          {expenses.length === 0 ? (
+            <p className="mt-3 text-sm text-black/60">No expenses yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-black/10">
+              {expenses.map((expense) => (
+                <li
+                  key={expense.id}
+                  className="flex items-center justify-between gap-4 py-2"
+                >
+                  <span className="text-sm">{expense.description}</span>
+                  <span className="min-w-24 text-right text-sm tabular-nums">
+                    {formatMoney(expense.total_amount)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
 
         <section className="rounded-lg border border-black/10 p-4">
           <div className="space-y-1">
@@ -213,7 +248,7 @@ export function TripOverview(props: TripOverviewProps) {
           </div>
 
           {sortedLogs.length === 0 ? (
-            <p className="mt-3 text-sm text-black/60">No activity yet.</p>
+            <p className="mt-3 text-sm text-black/60">No logs available.</p>
           ) : (
             <ul className="mt-3 divide-y divide-black/10">
               {sortedLogs.map((log) => {
