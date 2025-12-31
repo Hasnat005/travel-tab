@@ -105,118 +105,132 @@ export function TripOverview(props: TripOverviewProps) {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6">
-      <div className="rounded-lg border border-black/10 p-4">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">{trip.name}</h1>
-          <p className="text-sm text-black/60">{dateRange}</p>
+      <div className="space-y-6">
+        <header className="rounded-lg border border-black/10 p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-1">
+              <h1 className="text-2xl font-semibold tracking-tight">{trip.name}</h1>
+              <p className="text-sm text-black/60">{dateRange}</p>
+            </div>
+
+            {props.children ? <div className="shrink-0">{props.children}</div> : null}
+          </div>
         </header>
 
-        <section className="mt-6">
-          <h2 className="text-base font-semibold tracking-tight">Balances</h2>
-          <div className="mt-3 rounded-md border border-black/10">
-            <ul className="divide-y divide-black/10">
-              {members.map((member) => {
-                const displayName = member.name?.trim() || "Unnamed member";
-                const amount = balanceByUserId.get(member.user_id);
+        <section className="rounded-lg border border-black/10 p-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold tracking-tight">Balances</h2>
+            <p className="text-sm text-black/60">
+              Net balance per member (after simplification).
+            </p>
+          </div>
 
-                const isZero = typeof amount === "number" && Math.abs(amount) < 1e-9;
-                const isPositive = typeof amount === "number" && amount > 0;
-                const isNegative = typeof amount === "number" && amount < 0;
+          <ul className="mt-3 divide-y divide-black/10">
+            {members.map((member) => {
+              const displayName = member.name?.trim() || "Unnamed member";
+              const amount = balanceByUserId.get(member.user_id);
 
-                const balanceText =
-                  typeof amount !== "number"
-                    ? "—"
-                    : isZero
-                      ? "Settled"
-                      : isPositive
-                        ? `Get back ${formatMoney(amount)}`
-                        : `Owe ${formatMoney(amount)}`;
+              const isZero = typeof amount === "number" && Math.abs(amount) < 1e-9;
+              const isPositive = typeof amount === "number" && amount > 0;
+              const isNegative = typeof amount === "number" && amount < 0;
 
-                const balanceClassName =
-                  typeof amount !== "number"
+              const balanceText =
+                typeof amount !== "number"
+                  ? "—"
+                  : isZero
+                    ? "Settled"
+                    : isPositive
+                      ? `Get back ${formatMoney(amount)}`
+                      : `Owe ${formatMoney(amount)}`;
+
+              const balanceClassName =
+                typeof amount !== "number"
+                  ? "text-black/60"
+                  : isZero
                     ? "text-black/60"
-                    : isZero
-                      ? "text-black/60"
-                      : isPositive
-                        ? "text-green-700"
-                        : "text-red-700";
+                    : isPositive
+                      ? "text-green-700"
+                      : "text-red-700";
+
+              return (
+                <li
+                  key={member.user_id}
+                  className="flex items-center justify-between gap-4 py-2"
+                >
+                  <span className="text-sm">{displayName}</span>
+                  <span
+                    className={`min-w-36 text-right text-sm tabular-nums ${balanceClassName}`}
+                  >
+                    {balanceText}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+
+        <section className="rounded-lg border border-black/10 p-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold tracking-tight">Settlement Plan</h2>
+            <p className="text-sm text-black/60">
+              Suggested payments to settle the trip.
+            </p>
+          </div>
+
+          {settlements.length === 0 ? (
+            <p className="mt-3 text-sm text-black/60">No settlements needed.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-black/10">
+              {settlements.map((s, index) => {
+                const payerName =
+                  memberNameByUserId.get(s.payer_id) || "Unknown member";
+                const payeeName =
+                  memberNameByUserId.get(s.payee_id) || "Unknown member";
 
                 return (
                   <li
-                    key={member.user_id}
-                    className="flex items-center justify-between gap-4 px-3 py-2"
+                    key={`${s.payer_id}-${s.payee_id}-${index}`}
+                    className="flex items-center justify-between gap-4 py-2"
                   >
-                    <span className="text-sm">{displayName}</span>
-                    <span
-                      className={`min-w-36 text-right text-sm tabular-nums ${balanceClassName}`}
-                    >
-                      {balanceText}
+                    <span className="text-sm">
+                      <span className="font-medium">{payerName}</span> pays{" "}
+                      <span className="font-medium">{payeeName}</span>
+                    </span>
+                    <span className="min-w-24 text-right text-sm tabular-nums font-medium">
+                      {formatMoney(s.amount)}
                     </span>
                   </li>
                 );
               })}
             </ul>
-          </div>
+          )}
         </section>
 
-        <section className="mt-6">
-          <h2 className="text-base font-semibold tracking-tight">Settlement Plan</h2>
-          <div className="mt-3 rounded-md border border-black/10">
-            {settlements.length === 0 ? (
-              <p className="px-3 py-3 text-sm text-black/60">
-                No settlements needed.
-              </p>
-            ) : (
-              <ul className="divide-y divide-black/10">
-                {settlements.map((s, index) => {
-                  const payerName =
-                    memberNameByUserId.get(s.payer_id) || "Unknown member";
-                  const payeeName =
-                    memberNameByUserId.get(s.payee_id) || "Unknown member";
-
-                  return (
-                    <li
-                      key={`${s.payer_id}-${s.payee_id}-${index}`}
-                      className="flex items-center justify-between gap-4 px-3 py-2"
-                    >
-                      <span className="text-sm">
-                        <span className="font-medium">{payerName}</span> pays{" "}
-                        <span className="font-medium">{payeeName}</span>
-                      </span>
-                      <span className="min-w-24 text-right text-sm tabular-nums font-medium">
-                        {formatMoney(s.amount)}
-                      </span>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+        <section className="rounded-lg border border-black/10 p-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold tracking-tight">Trip Activity</h2>
+            <p className="text-sm text-black/60">A chronological record of actions.</p>
           </div>
-        </section>
 
-        <section className="mt-6">
-          <h2 className="text-base font-semibold tracking-tight">Trip Activity</h2>
-          <div className="mt-3 rounded-md border border-black/10">
-            {sortedLogs.length === 0 ? (
-              <p className="px-3 py-3 text-sm text-black/60">No activity yet.</p>
-            ) : (
-              <ul className="divide-y divide-black/10">
-                {sortedLogs.map((log) => {
-                  const relative = formatRelativeTime(log.timestamp);
-                  return (
-                    <li key={log.id} className="px-3 py-2">
-                      <p className="text-sm text-black/70">
-                        {describeLog(log)}
-                        {relative ? (
-                          <span className="text-black/50"> – {relative}</span>
-                        ) : null}
-                      </p>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </div>
+          {sortedLogs.length === 0 ? (
+            <p className="mt-3 text-sm text-black/60">No activity yet.</p>
+          ) : (
+            <ul className="mt-3 divide-y divide-black/10">
+              {sortedLogs.map((log) => {
+                const relative = formatRelativeTime(log.timestamp);
+                return (
+                  <li key={log.id} className="py-2">
+                    <p className="text-sm text-black/70">
+                      {describeLog(log)}
+                      {relative ? (
+                        <span className="text-black/50"> – {relative}</span>
+                      ) : null}
+                    </p>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
         </section>
       </div>
     </div>
