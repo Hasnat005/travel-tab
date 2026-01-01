@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { prisma } from "@/lib/prisma";
@@ -9,6 +8,10 @@ import { calculateTripDebts } from "@/lib/debt-calculator";
 import MemberCardsWithDetail from "@/components/trips/MemberCardsWithDetail";
 import MaterialCard from "@/components/ui/MaterialCard";
 import InviteLinkButton from "@/components/trips/InviteLinkButton";
+import { TripTabTransitionProvider } from "@/components/trips/TripTabTransitionContext";
+import TripTabNavClient from "@/components/trips/TripTabNavClient";
+import TripTabContentPending from "@/components/trips/TripTabContentPending";
+import TripGoToTabButton from "@/components/trips/TripGoToTabButton";
 import { formatTaka } from "@/lib/money";
 import { Plus } from "lucide-react";
 
@@ -273,14 +276,14 @@ export default async function TripDetailsPage({
     return u.email ?? "Unknown";
   }
 
-  const tabItems = [
+  const tabItems: { key: string; label: string }[] = [
     { key: "overview", label: "Overview" },
     { key: "expenses", label: `Expenses (${expensesCount})` },
     { key: "settlement", label: settlements.length > 0 ? `Settlement (${settlements.length})` : "Settlement" },
     { key: "team", label: `Team (${trip.members.length})` },
     { key: "activity", label: `Activity (${logsCount})` },
     { key: "settings", label: "Settings" },
-  ] as const;
+  ];
 
   const showFab = tab === "overview" || tab === "expenses";
 
@@ -291,81 +294,62 @@ export default async function TripDetailsPage({
   }));
 
   return (
-    <div className="-mx-4 -my-4 flex flex-col gap-6 p-4 md:-mx-6 md:-my-6 md:grid md:grid-cols-12 md:gap-8 md:p-8 lg:-mx-8 lg:-my-8">
-      <div className="md:col-span-12">
-        <MaterialCard>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{trip.name}</h1>
-            <p className="text-sm text-[#C4C7C5]">
-              {trip.destination} · {formatDate(trip.start_date)} → {formatDate(trip.end_date)}
-            </p>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
-              <p className="text-xs font-medium text-[#C4C7C5]">Total spent</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums md:text-3xl">
-                {formatCurrency(totalTripCost)}
+    <TripTabTransitionProvider tripId={tripId} currentTab={tab} tabItems={tabItems}>
+      <div className="-mx-4 -my-4 flex flex-col gap-6 p-4 md:-mx-6 md:-my-6 md:grid md:grid-cols-12 md:gap-8 md:p-8 lg:-mx-8 lg:-my-8">
+        <div className="md:col-span-12">
+          <MaterialCard>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight md:text-4xl">{trip.name}</h1>
+              <p className="text-sm text-[#C4C7C5]">
+                {trip.destination} · {formatDate(trip.start_date)} → {formatDate(trip.end_date)}
               </p>
             </div>
 
-            <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
-              <p className="text-xs font-medium text-[#C4C7C5]">Your balance</p>
-              <p
-                className={
-                  "mt-2 text-2xl font-semibold tabular-nums md:text-3xl " +
-                  (yourBalance
-                    ? yourBalance.net > 0
-                      ? "text-green-400"
-                      : yourBalance.net < 0
-                        ? "text-red-400"
-                        : "text-[#E3E3E3]"
-                    : "text-[#E3E3E3]")
-                }
-              >
-                {formatCurrency(Math.abs(yourBalance?.net ?? 0))}
-              </p>
-              <p className="mt-1 text-sm text-[#C4C7C5]">
-                {yourBalance
-                  ? yourBalance.net > 0
-                    ? `You get back ${formatCurrency(Math.abs(yourBalance.net))}`
-                    : yourBalance.net < 0
-                      ? `You owe ${formatCurrency(Math.abs(yourBalance.net))}`
-                      : "Everyone is settled up"
-                  : ""}
-              </p>
-            </div>
-          </div>
-        </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
+                <p className="text-xs font-medium text-[#C4C7C5]">Total spent</p>
+                <p className="mt-2 text-2xl font-semibold tabular-nums md:text-3xl">
+                  {formatCurrency(totalTripCost)}
+                </p>
+              </div>
 
-        <div className="scrollbar-hide -mx-4 mt-5 overflow-x-auto px-4">
-          <div className="flex w-max items-center gap-2 whitespace-nowrap">
-            {tabItems.map((t) => {
-              const active = tab === t.key;
-              return (
-                <Link
-                  key={t.key}
-                  href={`/trips/${tripId}?tab=${t.key}`}
-                  prefetch={false}
+              <div className="rounded-[18px] bg-[#2A2A2A] p-5 md:p-8">
+                <p className="text-xs font-medium text-[#C4C7C5]">Your balance</p>
+                <p
                   className={
-                    "inline-flex h-10 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors " +
-                    (active
-                      ? "bg-[#333537] text-[#E3E3E3]"
-                      : "bg-transparent text-[#C4C7C5] hover:bg-white/5 hover:text-[#E3E3E3]")
+                    "mt-2 text-2xl font-semibold tabular-nums md:text-3xl " +
+                    (yourBalance
+                      ? yourBalance.net > 0
+                        ? "text-green-400"
+                        : yourBalance.net < 0
+                          ? "text-red-400"
+                          : "text-[#E3E3E3]"
+                      : "text-[#E3E3E3]")
                   }
                 >
-                  {t.label}
-                </Link>
-              );
-            })}
+                  {formatCurrency(Math.abs(yourBalance?.net ?? 0))}
+                </p>
+                <p className="mt-1 text-sm text-[#C4C7C5]">
+                  {yourBalance
+                    ? yourBalance.net > 0
+                      ? `You get back ${formatCurrency(Math.abs(yourBalance.net))}`
+                      : yourBalance.net < 0
+                        ? `You owe ${formatCurrency(Math.abs(yourBalance.net))}`
+                        : "Everyone is settled up"
+                    : ""}
+                </p>
+              </div>
+            </div>
           </div>
-        </div>
-        </MaterialCard>
-      </div>
 
-      <div className="flex flex-col gap-6 md:col-span-8">
-          {tab === "overview" ? (
+          <TripTabNavClient />
+          </MaterialCard>
+        </div>
+
+        <div className="flex flex-col gap-6 md:col-span-8">
+          <TripTabContentPending>
+            {tab === "overview" ? (
             <>
               <MaterialCard>
                 <div className="space-y-1">
@@ -388,12 +372,12 @@ export default async function TripDetailsPage({
                     <h2 className="text-base font-semibold tracking-tight">Recent expenses</h2>
                     <p className="text-sm text-[#C4C7C5]">Last 3 expenses added.</p>
                   </div>
-                  <Link
-                    href={`/trips/${tripId}?tab=expenses`}
+                  <TripGoToTabButton
+                    tabKey="expenses"
                     className="text-sm font-medium text-[#A8C7FA] hover:underline"
                   >
                     View all
-                  </Link>
+                  </TripGoToTabButton>
                 </div>
 
                 {expensesCount === 0 ? (
@@ -565,7 +549,8 @@ export default async function TripDetailsPage({
               <InviteLinkButton tripId={tripId} />
             </MaterialCard>
           ) : null}
-      </div>
+          </TripTabContentPending>
+        </div>
 
       {showFab ? (
         // Perf: mount AddExpenseModal once; position it responsively.
@@ -585,6 +570,7 @@ export default async function TripDetailsPage({
           />
         </div>
       ) : null}
-    </div>
+      </div>
+    </TripTabTransitionProvider>
   );
 }
