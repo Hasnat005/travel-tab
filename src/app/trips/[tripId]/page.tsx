@@ -189,8 +189,19 @@ export default async function TripDetailsPage({
   const settlements = debtResult.settlements;
 
   const memberLabelById = new Map(
-    trip.members.map((m) => [m.user_id, m.user.username?.trim() || m.user.name?.trim() || m.user.email])
+    trip.members.map((m) => [
+      m.user_id,
+      m.user.username?.trim() ? `@${m.user.username.trim()}` : m.user.name?.trim() || m.user.email,
+    ])
   );
+
+  function userLabel(u: { username?: string | null; name?: string | null; email?: string | null | undefined }) {
+    const username = u.username?.trim();
+    if (username) return `@${username}`;
+    const name = u.name?.trim();
+    if (name) return name;
+    return u.email ?? "Unknown";
+  }
 
   const tabItems = [
     { key: "overview", label: "Overview" },
@@ -350,7 +361,7 @@ export default async function TripDetailsPage({
                 <div className="mt-4 grid gap-4">
                   {trip.expenses.map((e) => {
                     const payerNames = e.payers
-                      .map((p) => p.user.name?.trim() || p.user.email)
+                      .map((p) => userLabel(p.user))
                       .filter(Boolean)
                       .join(", ");
 
@@ -425,9 +436,7 @@ export default async function TripDetailsPage({
                 <ul className="mt-3 divide-y divide-white/10">
                   {trip.logs.map((log) => {
                     const performer =
-                      log.performer?.name?.trim() ||
-                      log.performer?.email ||
-                      "Unknown member";
+                      log.performer ? userLabel(log.performer) : "Unknown member";
                     const msg = detailsMessage(log.details);
                     const line = msg
                       ? msg

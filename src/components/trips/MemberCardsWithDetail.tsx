@@ -285,9 +285,11 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
             <div className="flex items-start justify-between gap-4 border-b border-white/10 p-4">
               <div className="min-w-0">
                 <h2 id={dialogTitleId} className="truncate text-base font-semibold tracking-tight text-[#E3E3E3]">
-                  {selected.name?.trim() || selected.email}
+                  {selected.username?.trim() ? `@${selected.username.trim()}` : selected.name?.trim() || selected.email}
                 </h2>
-                <p className="truncate text-sm text-[#C4C7C5]">{selected.email}</p>
+                {!selected.username?.trim() ? (
+                  <p className="truncate text-sm text-[#C4C7C5]">{selected.email}</p>
+                ) : null}
               </div>
 
               <button

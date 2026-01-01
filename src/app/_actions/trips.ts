@@ -350,16 +350,18 @@ export async function removeMember(
     const [actor, removed] = await Promise.all([
       tx.user.findUnique({
         where: { id: user.id },
-        select: { name: true, email: true },
+        select: { name: true, email: true, username: true },
       }),
       tx.user.findUnique({
         where: { id: memberUserId },
-        select: { name: true, email: true },
+        select: { name: true, email: true, username: true },
       }),
     ]);
 
-    const actorLabel = actor?.name?.trim() || actor?.email || user.email || user.id;
-    const removedLabel = removed?.name?.trim() || removed?.email || memberUserId;
+    const actorLabel =
+      actor?.username?.trim() ? `@${actor.username.trim()}` : actor?.name?.trim() || actor?.email || user.email || user.id;
+    const removedLabel =
+      removed?.username?.trim() ? `@${removed.username.trim()}` : removed?.name?.trim() || removed?.email || memberUserId;
 
     await tx.tripLog.create({
       data: {

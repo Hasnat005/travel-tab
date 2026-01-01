@@ -618,10 +618,13 @@ export async function createExpense(
 
     const performer = await tx.user.findUnique({
       where: { id: user.id },
-      select: { name: true, email: true },
+      select: { name: true, email: true, username: true },
     });
 
-    const performerName = performer?.name?.trim() || performer?.email || "User";
+    const performerName =
+      performer?.username?.trim()
+        ? `@${performer.username.trim()}`
+        : performer?.name?.trim() || performer?.email || "User";
 
     await tx.tripLog.create({
       data: {

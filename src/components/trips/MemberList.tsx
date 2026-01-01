@@ -13,6 +13,7 @@ type Member = {
     id: string;
     name: string | null;
     email: string;
+    username?: string | null;
   };
 };
 
@@ -85,7 +86,9 @@ export default function MemberList({
 
       <div className="mt-4 grid gap-3">
         {members.map((m) => {
-          const displayName = m.user.name?.trim() ? m.user.name : null;
+          const username = m.user.username?.trim();
+          const displayName = username ? `@${username}` : m.user.name?.trim() ? m.user.name : null;
+          const secondary = username ? (m.user.name?.trim() ? m.user.name : null) : obfuscateEmail(m.user.email);
           const isCreator = creatorId != null && m.user_id === creatorId;
           const isSelf = m.user_id === currentUserId;
           const canRemoveOther = creatorId != null && currentUserId === creatorId;
@@ -108,9 +111,7 @@ export default function MemberList({
                     </span>
                   ) : null}
                 </div>
-                <p className="truncate text-xs text-[#C4C7C5]">
-                  {obfuscateEmail(m.user.email)}
-                </p>
+                {secondary ? <p className="truncate text-xs text-[#C4C7C5]">{secondary}</p> : null}
               </div>
 
               {canShowRemove ? (
