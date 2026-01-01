@@ -6,6 +6,7 @@ import { addMemberAction, removeMemberAction } from "@/app/_actions/trips";
 import MaterialCard from "@/components/ui/MaterialCard";
 import MaterialButton from "@/components/ui/MaterialButton";
 import MaterialInput from "@/components/ui/MaterialInput";
+import InviteLinkButton from "@/components/trips/InviteLinkButton";
 
 type Member = {
   user_id: string;
@@ -160,6 +161,8 @@ export default function MemberList({
           <p className="mt-2 text-sm text-red-400">{state.message}</p>
         ) : null}
       </form>
+
+      <InviteLinkButton tripId={tripId} />
     </MaterialCard>
   );
 }

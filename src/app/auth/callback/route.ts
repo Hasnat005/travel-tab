@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getSupabaseEnv } from "@/lib/supabase/env";
 import { prisma } from "@/lib/prisma";
+import { claimInviteToken, INVITE_COOKIE_NAME, inviteCookieOptions } from "@/lib/invites";
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
@@ -63,6 +64,24 @@ export async function GET(request: NextRequest) {
             : undefined,
       },
     });
+
+    const inviteToken = request.cookies.get(INVITE_COOKIE_NAME)?.value?.trim();
+    if (inviteToken) {
+      try {
+        const claimed = await claimInviteToken(user.id, inviteToken);
+        if (claimed.tripId) {
+          response.headers.set(
+            "Location",
+            new URL(`/trips/${claimed.tripId}`, url.origin).toString()
+          );
+        }
+      } finally {
+        response.cookies.set(INVITE_COOKIE_NAME, "", {
+          ...inviteCookieOptions(),
+          maxAge: 0,
+        });
+      }
+    }
   }
 
   return response;

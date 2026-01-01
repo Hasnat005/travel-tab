@@ -42,6 +42,7 @@ model Trip {
   members TripMember[]
   expenses Expense[]
   logs     TripLog[]
+  invitations TripInvitation[]
 
   @@index([creator_id])
 }
@@ -112,5 +113,18 @@ model TripMember {
   user User @relation(fields: [user_id], references: [id])
 
   @@id([trip_id, user_id])
+  @@unique([trip_id, user_id])
   @@index([user_id])
+}
+
+model TripInvitation {
+  id         String   @id @default(uuid()) @db.Uuid
+  trip_id    String   @db.Uuid
+  token      String   @unique
+  status     String   @default("active")
+  created_at DateTime @default(now())
+
+  trip Trip @relation(fields: [trip_id], references: [id], onDelete: Cascade)
+
+  @@index([trip_id])
 }

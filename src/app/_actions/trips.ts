@@ -1,12 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { z } from "zod";
 
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+
+type CreateTripInviteResult =
+  | { success: true; url: string }
+  | { success: false; message: string };
 
 type CreateTripResult =
   | { success: true }
@@ -274,6 +279,63 @@ export async function addMemberAction(
   const tripId = String(formData.get("tripId") ?? "");
   const email = String(formData.get("email") ?? "");
   return addMember(tripId, email);
+}
+
+function getAppOrigin(requestHeaders: Headers) {
+  const origin = requestHeaders.get("origin");
+  if (origin) return origin;
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  if (siteUrl) return siteUrl;
+
+  const vercelUrl = process.env.VERCEL_URL;
+  if (vercelUrl) return `https://${vercelUrl}`;
+
+  return "http://localhost:3000";
+}
+
+export async function createTripInvite(tripId: string): Promise<CreateTripInviteResult> {
+  if (!tripId) return { success: false, message: "Missing trip id." };
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { success: false, message: "Please log in." };
+  }
+
+  const membership = await prisma.tripMember.findUnique({
+    where: { trip_id_user_id: { trip_id: tripId, user_id: user.id } },
+    select: { trip_id: true },
+  });
+
+  if (!membership) {
+    return { success: false, message: "You must be a trip member to create invites." };
+  }
+
+  const existing = await prisma.tripInvitation.findFirst({
+    where: { trip_id: tripId },
+    orderBy: { created_at: "desc" },
+    select: { id: true, token: true, status: true },
+  });
+
+  const invite = existing
+    ? existing.status === "active"
+      ? existing
+      : await prisma.tripInvitation.update({
+          where: { id: existing.id },
+          data: { status: "active" },
+          select: { token: true },
+        })
+    : await prisma.tripInvitation.create({
+        data: { trip_id: tripId, token: crypto.randomUUID(), status: "active" },
+        select: { token: true },
+      });
+
+  const origin = getAppOrigin(await headers());
+  return { success: true, url: `${origin}/join/${invite.token}` };
 }
 
 type RemoveMemberResult =

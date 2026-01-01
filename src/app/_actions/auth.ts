@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
+import { claimInviteAfterAuth } from "@/lib/invites";
 
 function parseUsername(value: unknown): string | null {
   const raw = String(value ?? "").trim();
@@ -93,9 +94,17 @@ export async function signUp(formData: FormData) {
             : username,
       },
     });
+
+    // If the user is already authenticated (email confirmation off), auto-join from invite.
+    const claimedTripId = await claimInviteAfterAuth(data.user.id);
+    if (claimedTripId) {
+      redirect(`/trips/${claimedTripId}`);
+    }
   }
 
-  redirect("/login");
+  // If email confirmation is enabled, the user may not be logged in yet.
+  // The invite cookie (if any) will be claimed in the auth callback after confirmation.
+  redirect(data.session ? "/trips" : "/login");
 }
 
 export async function signIn(formData: FormData) {
@@ -163,6 +172,11 @@ export async function signIn(formData: FormData) {
         username: username ?? undefined,
       },
     });
+
+    const claimedTripId = await claimInviteAfterAuth(data.user.id);
+    if (claimedTripId) {
+      redirect(`/trips/${claimedTripId}`);
+    }
   }
 
   redirect("/trips");

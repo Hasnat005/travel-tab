@@ -8,6 +8,7 @@ import MemberList from "@/components/trips/MemberList";
 import { calculateTripDebts } from "@/lib/debt-calculator";
 import MemberCardsWithDetail from "@/components/trips/MemberCardsWithDetail";
 import MaterialCard from "@/components/ui/MaterialCard";
+import InviteLinkButton from "@/components/trips/InviteLinkButton";
 import { formatTaka } from "@/lib/money";
 import { Plus } from "lucide-react";
 
@@ -88,7 +89,7 @@ export default async function TripDetailsPage({
           payers: { include: { user: { select: { id: true, name: true, email: true, username: true } } } },
           shares: true,
         },
-        orderBy: { date: "desc" },
+        orderBy: [{ date: "desc" }, { created_at: "desc" }],
       },
       logs: {
         include: {
@@ -486,6 +487,8 @@ export default async function TripDetailsPage({
                   </div>
                 ) : null}
               </dl>
+
+              <InviteLinkButton tripId={tripId} />
             </MaterialCard>
           ) : null}
       </div>
