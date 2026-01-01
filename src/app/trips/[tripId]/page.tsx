@@ -67,38 +67,36 @@ export default async function TripDetailsPage({
   }
 
   const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  const trip = await prisma.trip.findUnique({
-    where: { id: tripId },
-    include: {
-      members: {
-        include: {
-          user: { select: { id: true, name: true, email: true, username: true } },
-        },
-      },
-      expenses: {
-        include: {
-          // R6 prerequisite: include payers + shares.
-          payers: { include: { user: { select: { id: true, name: true, email: true, username: true } } } },
-          shares: true,
-        },
-        orderBy: [{ date: "desc" }, { created_at: "desc" }],
-      },
-      logs: {
-        include: {
-          performer: { select: { id: true, name: true, email: true, username: true } },
-        },
-        orderBy: { timestamp: "desc" },
-      },
+  // Perf: fetch auth + base trip in parallel; only fetch heavy tab data as needed.
+  const [
+    {
+      data: { user },
     },
-  });
+    trip,
+  ] = await Promise.all([
+    supabase.auth.getUser(),
+    prisma.trip.findUnique({
+      where: { id: tripId },
+      select: {
+        id: true,
+        name: true,
+        destination: true,
+        start_date: true,
+        end_date: true,
+        notes: true,
+        creator_id: true,
+        members: {
+          select: {
+            user_id: true,
+            user: { select: { id: true, name: true, email: true, username: true } },
+          },
+        },
+        _count: { select: { expenses: true, logs: true } },
+      },
+    }),
+  ]);
+
+  if (!user) redirect("/login");
 
   if (!trip) {
     notFound();
@@ -109,10 +107,83 @@ export default async function TripDetailsPage({
     notFound();
   }
 
-  const totalTripCost = trip.expenses.reduce(
-    (sum, e) => sum + e.total_amount.toNumber(),
-    0
-  );
+  const expensesCount = trip._count.expenses;
+  const logsCount = trip._count.logs;
+
+  const needsFullExpenses = tab === "overview" || tab === "settlement";
+  const needsExpenseList = tab === "expenses";
+  const needsLogs = tab === "activity";
+
+  const [totalAgg, paidAgg, owedAgg, fullExpenses, listExpenses, logs] = await Promise.all([
+    prisma.expense.aggregate({
+      where: { trip_id: tripId },
+      _sum: { total_amount: true },
+    }),
+    prisma.expensePayer.groupBy({
+      by: ["user_id"],
+      where: { expense: { trip_id: tripId } },
+      _sum: { amount_paid: true },
+    }),
+    prisma.expenseShare.groupBy({
+      by: ["user_id"],
+      where: { expense: { trip_id: tripId } },
+      _sum: { amount_owed: true },
+    }),
+    needsFullExpenses
+      ? prisma.expense.findMany({
+          where: { trip_id: tripId },
+          orderBy: [{ date: "desc" }, { created_at: "desc" }],
+          select: {
+            id: true,
+            description: true,
+            date: true,
+            total_amount: true,
+            payers: {
+              select: {
+                user_id: true,
+                amount_paid: true,
+                user: { select: { id: true, name: true, email: true, username: true } },
+              },
+            },
+            shares: { select: { user_id: true, amount_owed: true } },
+          },
+        })
+      : Promise.resolve([]),
+    needsExpenseList
+      ? prisma.expense.findMany({
+          where: { trip_id: tripId },
+          orderBy: [{ date: "desc" }, { created_at: "desc" }],
+          select: {
+            id: true,
+            description: true,
+            date: true,
+            total_amount: true,
+            payers: {
+              select: {
+                user_id: true,
+                amount_paid: true,
+                user: { select: { name: true, email: true, username: true } },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    needsLogs
+      ? prisma.tripLog.findMany({
+          where: { trip_id: tripId },
+          orderBy: { timestamp: "desc" },
+          select: {
+            id: true,
+            action_type: true,
+            details: true,
+            timestamp: true,
+            performer: { select: { id: true, name: true, email: true, username: true } },
+          },
+        })
+      : Promise.resolve([]),
+  ]);
+
+  const totalTripCost = totalAgg._sum.total_amount?.toNumber() ?? 0;
 
   // R6: Member Cards & Balances
   // paid = sum(payers.amount_paid), owed = sum(shares.amount_owed), net = paid - owed
@@ -123,15 +194,14 @@ export default async function TripDetailsPage({
     owedCentsByUser.set(m.user_id, 0);
   }
 
-  for (const e of trip.expenses) {
-    for (const p of e.payers) {
-      const prev = paidCentsByUser.get(p.user_id) ?? 0;
-      paidCentsByUser.set(prev === undefined ? p.user_id : p.user_id, prev + toCents(p.amount_paid.toNumber()));
-    }
-    for (const s of e.shares) {
-      const prev = owedCentsByUser.get(s.user_id) ?? 0;
-      owedCentsByUser.set(prev === undefined ? s.user_id : s.user_id, prev + toCents(s.amount_owed.toNumber()));
-    }
+  for (const row of paidAgg) {
+    const amount = row._sum.amount_paid?.toNumber() ?? 0;
+    paidCentsByUser.set(row.user_id, toCents(amount));
+  }
+
+  for (const row of owedAgg) {
+    const amount = row._sum.amount_owed?.toNumber() ?? 0;
+    owedCentsByUser.set(row.user_id, toCents(amount));
   }
 
   const memberBalances = trip.members.map((m) => {
@@ -151,39 +221,42 @@ export default async function TripDetailsPage({
 
   const yourBalance = memberBalances.find((m) => m.user_id === user.id) ?? null;
 
-  // Serialize expenses for client-side member detail modal (no Decimal/Date across boundary).
-  const clientExpenses = trip.expenses.map((e) => ({
-    id: e.id,
-    description: e.description,
-    date: e.date.toISOString(),
-    total_amount: e.total_amount.toNumber(),
-    payers: e.payers.map((p) => ({
-      user_id: p.user_id,
-      amount_paid: p.amount_paid.toNumber(),
-      user: { name: p.user.name, email: p.user.email, username: p.user.username },
-    })),
-    shares: e.shares.map((s) => ({
-      user_id: s.user_id,
-      amount_owed: s.amount_owed.toNumber(),
-    })),
-  }));
+  // Perf: only serialize per-expense details (large) when needed.
+  const clientExpenses = tab === "overview"
+    ? fullExpenses.map((e) => ({
+        id: e.id,
+        description: e.description,
+        date: e.date.toISOString(),
+        total_amount: e.total_amount.toNumber(),
+        payers: e.payers.map((p) => ({
+          user_id: p.user_id,
+          amount_paid: p.amount_paid.toNumber(),
+          user: { name: p.user.name, email: p.user.email, username: p.user.username },
+        })),
+        shares: e.shares.map((s) => ({
+          user_id: s.user_id,
+          amount_owed: s.amount_owed.toNumber(),
+        })),
+      }))
+    : [];
 
-  // R9.4: Debt simplification / settlement plan
-  const memberIds = trip.members.map((m) => m.user_id);
-  const debtInputExpenses = trip.expenses.map((e) => ({
-    id: e.id,
-    payers: e.payers.map((p) => ({
-      user_id: p.user_id,
-      amount_paid: p.amount_paid.toNumber(),
-    })),
-    shares: e.shares.map((s) => ({
-      user_id: s.user_id,
-      amount_owed: s.amount_owed.toNumber(),
-    })),
-  }));
-
-  const debtResult = calculateTripDebts(debtInputExpenses, memberIds);
-  const settlements = debtResult.settlements;
+  // R9.4: Debt simplification / settlement plan (only when full expense detail is loaded)
+  const settlements = needsFullExpenses
+    ? calculateTripDebts(
+        fullExpenses.map((e) => ({
+          id: e.id,
+          payers: e.payers.map((p) => ({
+            user_id: p.user_id,
+            amount_paid: p.amount_paid.toNumber(),
+          })),
+          shares: e.shares.map((s) => ({
+            user_id: s.user_id,
+            amount_owed: s.amount_owed.toNumber(),
+          })),
+        })),
+        trip.members.map((m) => m.user_id)
+      ).settlements
+    : [];
 
   const memberLabelById = new Map(
     trip.members.map((m) => [
@@ -202,10 +275,10 @@ export default async function TripDetailsPage({
 
   const tabItems = [
     { key: "overview", label: "Overview" },
-    { key: "expenses", label: `Expenses (${trip.expenses.length})` },
+    { key: "expenses", label: `Expenses (${expensesCount})` },
     { key: "settlement", label: settlements.length > 0 ? `Settlement (${settlements.length})` : "Settlement" },
     { key: "team", label: `Team (${trip.members.length})` },
-    { key: "activity", label: `Activity (${trip.logs.length})` },
+    { key: "activity", label: `Activity (${logsCount})` },
     { key: "settings", label: "Settings" },
   ] as const;
 
@@ -274,6 +347,7 @@ export default async function TripDetailsPage({
                 <Link
                   key={t.key}
                   href={`/trips/${tripId}?tab=${t.key}`}
+                  prefetch={false}
                   className={
                     "inline-flex h-10 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors " +
                     (active
@@ -322,11 +396,11 @@ export default async function TripDetailsPage({
                   </Link>
                 </div>
 
-                {trip.expenses.length === 0 ? (
+                {expensesCount === 0 ? (
                   <p className="mt-3 text-sm text-[#C4C7C5]">Add your first expense to start splitting.</p>
                 ) : (
                   <ul className="mt-4 divide-y divide-white/10">
-                    {trip.expenses.slice(0, 3).map((e) => (
+                    {fullExpenses.slice(0, 3).map((e) => (
                       <li key={e.id} className="py-3">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
@@ -352,11 +426,11 @@ export default async function TripDetailsPage({
                 <p className="text-sm text-[#C4C7C5]">A list of costs logged for this trip.</p>
               </div>
 
-              {trip.expenses.length === 0 ? (
+              {expensesCount === 0 ? (
                 <p className="mt-3 text-sm text-[#C4C7C5]">No expenses yet.</p>
               ) : (
                 <div className="mt-4 grid gap-4">
-                  {trip.expenses.map((e) => {
+                  {listExpenses.map((e) => {
                     const payerNames = e.payers
                       .map((p) => userLabel(p.user))
                       .filter(Boolean)
@@ -427,11 +501,11 @@ export default async function TripDetailsPage({
                 <p className="text-sm text-[#C4C7C5]">A chronological record of actions.</p>
               </div>
 
-              {trip.logs.length === 0 ? (
+              {logs.length === 0 ? (
                 <p className="mt-3 text-sm text-[#C4C7C5]">No logs available.</p>
               ) : (
                 <ul className="mt-3 divide-y divide-white/10">
-                  {trip.logs.map((log) => {
+                  {logs.map((log) => {
                     const performer =
                       log.performer ? userLabel(log.performer) : "Unknown member";
                     const msg = detailsMessage(log.details);
@@ -493,28 +567,9 @@ export default async function TripDetailsPage({
           ) : null}
       </div>
 
-      <div className="hidden md:block md:col-span-4">
-        {showFab ? (
-          <div className="flex justify-end">
-            <AddExpenseModal
-              tripId={tripId}
-              currentUserId={user.id}
-              members={membersForModal}
-              triggerVariant="filled"
-              triggerLabel={
-                <>
-                  <Plus className="h-5 w-5" />
-                  <span className="sr-only">Add expense</span>
-                </>
-              }
-              triggerClassName="h-14 w-14 rounded-full p-0"
-            />
-          </div>
-        ) : null}
-      </div>
-
       {showFab ? (
-        <div className="fixed bottom-6 right-6 z-50 md:hidden">
+        // Perf: mount AddExpenseModal once; position it responsively.
+        <div className="fixed bottom-6 right-6 z-50 md:static md:col-span-4 md:flex md:justify-end md:self-start">
           <AddExpenseModal
             tripId={tripId}
             currentUserId={user.id}

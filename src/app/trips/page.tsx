@@ -1,7 +1,4 @@
-import { redirect } from "next/navigation";
-
 import { getUserTrips } from "@/app/_actions/trips";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
 import CreateTripModal from "@/components/trips/CreateTripModal";
 import TripCard from "@/components/trips/TripCard";
 
@@ -11,15 +8,6 @@ export default async function TripsPage({
   searchParams?: Promise<{ message?: string }>;
 }) {
   const params = (await searchParams) ?? {};
-
-  const supabase = await createSupabaseServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect("/login");
-  }
 
   const trips = await getUserTrips();
 
