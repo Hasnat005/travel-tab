@@ -8,6 +8,7 @@ import MaterialButton from '@/components/ui/MaterialButton';
 import MaterialInput from '@/components/ui/MaterialInput';
 
 import { AddExpenseModal } from '@/components/expenses/AddExpenseModal';
+import { formatTaka } from '@/lib/money';
 
 type TripTab =
   | 'overview'
@@ -97,16 +98,8 @@ export type TripViewProps = {
   onDeleteTrip?: () => Promise<{ success: boolean; message?: string }>;
 };
 
-function formatCurrency(amount: number, currency = 'USD') {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: 'currency',
-      currency,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  } catch {
-    return `$${amount.toFixed(2)}`;
-  }
+function formatCurrency(amount: number) {
+  return formatTaka(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatDate(value: Date | string | null | undefined) {
@@ -659,7 +652,6 @@ function ExpenseList({ expenses }: { expenses: TripViewExpense[] }) {
   return (
     <div className="space-y-2">
       {sorted.map((exp) => {
-        const currency = exp.currency ?? 'USD';
         return (
           <MaterialCard key={exp.id} className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -668,7 +660,7 @@ function ExpenseList({ expenses }: { expenses: TripViewExpense[] }) {
                 <div className="text-xs text-[#C4C7C5]">{formatDate(exp.created_at)}</div>
               </div>
               <div className="text-right text-sm font-semibold text-[#E3E3E3]">
-                {formatCurrency(exp.amount, currency)}
+                {formatCurrency(exp.amount)}
               </div>
             </div>
           </MaterialCard>

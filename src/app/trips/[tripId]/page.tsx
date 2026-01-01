@@ -8,6 +8,7 @@ import MemberList from "@/components/trips/MemberList";
 import { calculateTripDebts } from "@/lib/debt-calculator";
 import MemberCardsWithDetail from "@/components/trips/MemberCardsWithDetail";
 import MaterialCard from "@/components/ui/MaterialCard";
+import { formatTaka } from "@/lib/money";
 import { Plus } from "lucide-react";
 
 function formatDate(d: Date) {
@@ -19,12 +20,7 @@ function formatDate(d: Date) {
 }
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatTaka(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function toCents(amount: number) {

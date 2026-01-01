@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { createExpense } from "@/app/_actions/expenses";
 import MaterialButton from "@/components/ui/MaterialButton";
+import { formatTaka } from "@/lib/money";
 
 type Props = {
   tripId: string;
@@ -91,13 +92,8 @@ function splitCentsByPercents(totalCents: number, items: Array<{ user_id: string
   return bases.map((b) => ({ user_id: b.user_id, cents: b.cents }));
 }
 
-function formatCurrency(amount: number, currency = "USD") {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    const sign = amount < 0 ? "-" : "";
-    return `${sign}$${Math.abs(amount).toFixed(2)}`;
-  }
+function formatCurrency(amount: number) {
+  return formatTaka(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export function AddExpenseModal({

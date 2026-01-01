@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 
 import MaterialCard from "@/components/ui/MaterialCard";
+import { formatTaka } from "@/lib/money";
 
 type MemberBalance = {
   user_id: string;
@@ -45,12 +46,7 @@ type Props = {
 type TabKey = "overview" | "paid" | "owed" | "settlement";
 
 function formatCurrency(amount: number) {
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatTaka(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatDate(iso: string) {

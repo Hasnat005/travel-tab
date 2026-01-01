@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { formatTaka } from "@/lib/money";
 
 export interface TripOverviewTrip {
   name: string;
@@ -74,7 +75,9 @@ export function TripOverview(props: TripOverviewProps) {
     members.map((m) => [m.user_id, m.name?.trim() || "Unnamed member"]),
   );
 
-  const formatMoney = (amount: number) => `$${Math.abs(amount).toFixed(2)}`;
+  const formatMoney = (amount: number) => {
+    return formatTaka(amount, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const formatRelativeTime = (isoTimestamp: string) => {
     const eventTime = new Date(isoTimestamp).getTime();
