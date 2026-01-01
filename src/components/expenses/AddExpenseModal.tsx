@@ -404,7 +404,7 @@ export function AddExpenseModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby={dialogTitleId}
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-x-hidden p-4"
         >
           <button
             type="button"
@@ -413,13 +413,13 @@ export function AddExpenseModal({
             aria-label="Close"
           />
 
-          <div className="relative w-full max-w-lg rounded-xl border border-black/8 bg-white p-5 dark:border-white/[.145] dark:bg-black">
+          <div className="relative w-full max-w-lg rounded-xl border border-white/10 bg-[#1E1E1E] p-5 text-[#E3E3E3]">
             <div className="flex items-start justify-between gap-4">
               <div className="space-y-1">
                 <h2 id={dialogTitleId} className="text-lg font-semibold tracking-tight">
                   Add expense
                 </h2>
-                <p className="text-sm text-black/60 dark:text-zinc-400">
+                <p className="text-sm text-[#C4C7C5]">
                   Multi-payer expenses with flexible splits.
                 </p>
               </div>
@@ -427,13 +427,13 @@ export function AddExpenseModal({
               <button
                 type="button"
                 onClick={requestClose}
-                className="rounded-md px-2 py-1 text-sm text-black/60 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
+                className="rounded-md px-2 py-1 text-sm text-[#C4C7C5] hover:text-[#E3E3E3]"
               >
                 Close
               </button>
             </div>
 
-            <form action={formAction} className="mt-4 flex max-h-[78vh] flex-col" onSubmit={() => setSubmitAttempted(true)}>
+            <form action={formAction} className="mt-4 flex max-h-[78vh] min-w-0 flex-col" onSubmit={() => setSubmitAttempted(true)}>
               <input type="hidden" name="tripId" value={tripId} />
 
               <input
@@ -442,14 +442,14 @@ export function AddExpenseModal({
                 value={payloadComputation.ok ? payloadComputation.payload : ""}
               />
 
-              <div className="grid gap-3 overflow-y-auto pr-1">
+              <div className="grid min-w-0 gap-3 overflow-y-auto overflow-x-hidden">
               <div className="space-y-1">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Expense info</p>
-                <p className="text-xs text-black/60 dark:text-zinc-400">What was it and how much?</p>
+                <p className="text-sm font-medium text-[#E3E3E3]">Expense info</p>
+                <p className="text-xs text-[#C4C7C5]">What was it and how much?</p>
               </div>
 
               <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-black/80 dark:text-zinc-200">
+                <span className="text-sm font-medium text-[#E3E3E3]">
                   Description
                 </span>
                 <input
@@ -458,7 +458,7 @@ export function AddExpenseModal({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   onBlur={() => setTouched((t) => ({ ...t, description: true }))}
-                  className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+                  className="h-11 rounded-lg border border-white/10 bg-transparent px-3 text-[#E3E3E3] outline-none placeholder:text-[#C4C7C5]"
                   placeholder="e.g., Lunch"
                 />
                 {topFieldErrors.description ? (
@@ -468,7 +468,7 @@ export function AddExpenseModal({
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-black/80 dark:text-zinc-200">
+                  <span className="text-sm font-medium text-[#E3E3E3]">
                     Amount
                   </span>
                   <input
@@ -503,7 +503,7 @@ export function AddExpenseModal({
                       });
                     }}
                     onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
-                    className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+                    className="h-11 rounded-lg border border-white/10 bg-transparent px-3 text-[#E3E3E3] outline-none placeholder:text-[#C4C7C5]"
                     placeholder="50.00"
                   />
                   {topFieldErrors.amount ? (
@@ -512,7 +512,7 @@ export function AddExpenseModal({
                 </label>
 
                 <label className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-black/80 dark:text-zinc-200">
+                  <span className="text-sm font-medium text-[#E3E3E3]">
                     Date
                   </span>
                   <input
@@ -522,7 +522,7 @@ export function AddExpenseModal({
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                     onBlur={() => setTouched((t) => ({ ...t, date: true }))}
-                    className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+                    className="h-11 rounded-lg border border-white/10 bg-transparent px-3 text-[#E3E3E3] outline-none"
                   />
                   {topFieldErrors.date ? (
                     <span className="text-xs text-red-700 dark:text-red-400">{topFieldErrors.date}</span>
@@ -531,8 +531,8 @@ export function AddExpenseModal({
               </div>
 
               <div className="space-y-1">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Split</p>
-                <p className="text-xs text-black/60 dark:text-zinc-400">How should this be shared?</p>
+                <p className="text-sm font-medium text-[#E3E3E3]">Split</p>
+                <p className="text-xs text-[#C4C7C5]">How should this be shared?</p>
 
                 <div role="radiogroup" aria-label="Split mode" className="grid grid-cols-3 gap-2">
                   {([
@@ -551,8 +551,8 @@ export function AddExpenseModal({
                         className={
                           "h-11 rounded-lg border px-3 text-sm font-medium transition-colors " +
                           (selected
-                            ? "border-black/15 bg-black/4 text-black dark:border-white/20 dark:bg-white/10 dark:text-zinc-50"
-                            : "border-black/8 bg-transparent text-black/80 hover:bg-black/4 dark:border-white/[.145] dark:text-zinc-200 dark:hover:bg-white/10")
+                            ? "border-white/20 bg-white/10 text-[#E3E3E3]"
+                            : "border-white/10 bg-transparent text-[#C4C7C5] hover:bg-white/10 hover:text-[#E3E3E3]")
                         }
                       >
                         {item.label}
@@ -562,18 +562,21 @@ export function AddExpenseModal({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-black/8 p-3 dark:border-white/[.145]">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Payers</p>
-                <p className="mt-0.5 text-xs text-black/60 dark:text-zinc-400">
+              <div className="rounded-lg border border-white/10 p-3">
+                <p className="text-sm font-medium text-[#E3E3E3]">Payers</p>
+                <p className="mt-0.5 text-xs text-[#C4C7C5]">
                   Enter how much each person paid (can be split across multiple payers).
                 </p>
 
                 <div className="mt-3 grid gap-2">
                   {members.map((m) => (
-                    <div key={m.id} className="flex items-center justify-between gap-3">
+                    <div
+                      key={m.id}
+                      className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,7rem)] items-center gap-3"
+                    >
                       <div className="min-w-0">
                         <p className="truncate text-sm">{m.name?.trim() ? m.name : m.email}</p>
-                        <p className="truncate text-xs text-black/60 dark:text-zinc-400">{m.email}</p>
+                        <p className="truncate text-xs text-[#C4C7C5]">{m.email}</p>
                       </div>
                       <input
                         type="number"
@@ -584,14 +587,14 @@ export function AddExpenseModal({
                         onChange={(e) =>
                           setPayerAmounts((prev) => ({ ...prev, [m.id]: e.target.value }))
                         }
-                        className="h-10 w-28 rounded-lg border border-black/8 bg-transparent px-3 text-right text-sm tabular-nums text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+                        className="h-10 w-full min-w-0 max-w-28 justify-self-end rounded-lg border border-white/10 bg-transparent px-3 text-right text-sm tabular-nums text-[#E3E3E3] outline-none"
                         aria-label={`Amount paid by ${m.email}`}
                       />
                     </div>
                   ))}
                 </div>
 
-                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-black/60 dark:text-zinc-400">
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#C4C7C5]">
                   <span>
                     Paid {formatCurrency(fromCents(totals.paidSumCents))} of {formatCurrency(fromCents(totals.totalCents))}
                   </span>
@@ -609,10 +612,10 @@ export function AddExpenseModal({
                     const paidCents = totals.payerCents.find((p) => p.user_id === m.id)?.cents ?? 0;
                     return (
                       <div key={m.id} className="flex items-center justify-between gap-3 text-xs">
-                        <span className="truncate text-black/70 dark:text-zinc-300">
+                        <span className="truncate text-[#C4C7C5]">
                           {m.name?.trim() ? m.name : m.email}
                         </span>
-                        <span className="tabular-nums text-black/60 dark:text-zinc-400">
+                        <span className="tabular-nums text-[#C4C7C5]">
                           {formatCurrency(fromCents(paidCents))}
                         </span>
                       </div>
@@ -621,14 +624,14 @@ export function AddExpenseModal({
                 </div>
               </div>
 
-              <div className="rounded-lg border border-black/8 p-3 dark:border-white/[.145]">
-                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Shares</p>
-                <p className="mt-0.5 text-xs text-black/60 dark:text-zinc-400">
+              <div className="rounded-lg border border-white/10 p-3">
+                <p className="text-sm font-medium text-[#E3E3E3]">Shares</p>
+                <p className="mt-0.5 text-xs text-[#C4C7C5]">
                   Define how the total should be split.
                 </p>
 
                 {splitMode === "equal" ? (
-                  <p className="mt-3 text-sm text-black/70 dark:text-zinc-300">
+                  <p className="mt-3 text-sm text-[#C4C7C5]">
                     Split equally among all members.
                   </p>
                 ) : null}
@@ -636,10 +639,13 @@ export function AddExpenseModal({
                 {splitMode === "custom" ? (
                   <div className="mt-3 grid gap-2">
                     {members.map((m) => (
-                      <div key={m.id} className="flex items-center justify-between gap-3">
+                      <div
+                        key={m.id}
+                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,7rem)] items-center gap-3"
+                      >
                         <div className="min-w-0">
                           <p className="truncate text-sm">{m.name?.trim() ? m.name : m.email}</p>
-                          <p className="truncate text-xs text-black/60 dark:text-zinc-400">{m.email}</p>
+                          <p className="truncate text-xs text-[#C4C7C5]">{m.email}</p>
                         </div>
                         <input
                           type="number"
@@ -650,7 +656,7 @@ export function AddExpenseModal({
                           onChange={(e) =>
                             setCustomShareAmounts((prev) => ({ ...prev, [m.id]: e.target.value }))
                           }
-                          className="h-10 w-28 rounded-lg border border-black/8 bg-transparent px-3 text-right text-sm tabular-nums text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
+                          className="h-10 w-full min-w-0 max-w-28 justify-self-end rounded-lg border border-white/10 bg-transparent px-3 text-right text-sm tabular-nums text-[#E3E3E3] outline-none"
                           aria-label={`Amount owed by ${m.email}`}
                         />
                       </div>
@@ -661,32 +667,33 @@ export function AddExpenseModal({
                 {splitMode === "percent" ? (
                   <div className="mt-3 grid gap-2">
                     {members.map((m) => (
-                      <div key={m.id} className="flex items-center justify-between gap-3">
+                      <div
+                        key={m.id}
+                        className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,7rem)_auto] items-center gap-2"
+                      >
                         <div className="min-w-0">
                           <p className="truncate text-sm">{m.name?.trim() ? m.name : m.email}</p>
-                          <p className="truncate text-xs text-black/60 dark:text-zinc-400">{m.email}</p>
+                          <p className="truncate text-xs text-[#C4C7C5]">{m.email}</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
-                            inputMode="decimal"
-                            value={percentShares[m.id] ?? "0"}
-                            onChange={(e) =>
-                              setPercentShares((prev) => ({ ...prev, [m.id]: e.target.value }))
-                            }
-                            className="h-10 w-28 rounded-lg border border-black/8 bg-transparent px-3 text-right text-sm tabular-nums text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
-                            aria-label={`Percent owed by ${m.email}`}
-                          />
-                          <span className="text-sm text-black/60 dark:text-zinc-400">%</span>
-                        </div>
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.01}
+                          inputMode="decimal"
+                          value={percentShares[m.id] ?? "0"}
+                          onChange={(e) =>
+                            setPercentShares((prev) => ({ ...prev, [m.id]: e.target.value }))
+                          }
+                          className="h-10 w-full min-w-0 max-w-28 justify-self-end rounded-lg border border-white/10 bg-transparent px-3 text-right text-sm tabular-nums text-[#E3E3E3] outline-none"
+                          aria-label={`Percent owed by ${m.email}`}
+                        />
+                        <span className="text-sm text-[#C4C7C5]">%</span>
                       </div>
                     ))}
                   </div>
                 ) : null}
 
-                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-black/60 dark:text-zinc-400">
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-[#C4C7C5]">
                   <span>
                     Owed {formatCurrency(fromCents(totals.owedSumCents))} of {formatCurrency(fromCents(totals.totalCents))}
                   </span>
@@ -701,10 +708,10 @@ export function AddExpenseModal({
                       const owedCents = totals.shareCents?.find((s) => s.user_id === m.id)?.cents ?? 0;
                       return (
                         <div key={m.id} className="flex items-center justify-between gap-3 text-xs">
-                          <span className="truncate text-black/70 dark:text-zinc-300">
+                          <span className="truncate text-[#C4C7C5]">
                             {m.name?.trim() ? m.name : m.email}
                           </span>
-                          <span className="tabular-nums text-black/60 dark:text-zinc-400">
+                          <span className="tabular-nums text-[#C4C7C5]">
                             {formatCurrency(fromCents(owedCents))}
                           </span>
                         </div>
@@ -716,10 +723,10 @@ export function AddExpenseModal({
 
               </div>
 
-              <div className="sticky bottom-0 mt-3 border-t border-black/8 bg-white pt-3 dark:border-white/[.145] dark:bg-black">
+              <div className="sticky bottom-0 mt-3 border-t border-white/10 bg-[#1E1E1E] pt-3">
                 {totals.totalCents > 0 ? (
-                  <div className="mb-2 rounded-lg border border-black/8 p-3 text-xs text-black/60 dark:border-white/[.145] dark:text-zinc-400">
-                    <p className="font-medium text-black/80 dark:text-zinc-200">Summary</p>
+                  <div className="mb-2 rounded-lg border border-white/10 p-3 text-xs text-[#C4C7C5]">
+                    <p className="font-medium text-[#E3E3E3]">Summary</p>
                     <p className="mt-1">
                       Total {formatCurrency(fromCents(totals.totalCents))} · Paid {formatCurrency(fromCents(totals.paidSumCents))} · Owed {formatCurrency(fromCents(totals.owedSumCents))}
                     </p>
@@ -739,7 +746,7 @@ export function AddExpenseModal({
                 <button
                   type="submit"
                   disabled={pending || !payloadComputation.ok}
-                  className="inline-flex h-11 w-full items-center justify-center rounded-full border border-black/8 px-5 text-sm font-medium transition-colors hover:bg-black/4 disabled:opacity-60 dark:border-white/[.145] dark:hover:bg-white/10"
+                  className="inline-flex h-11 w-full items-center justify-center rounded-full border border-white/10 px-5 text-sm font-medium text-[#E3E3E3] transition-colors hover:bg-white/10 disabled:opacity-60"
                 >
                   {pending ? "Adding…" : "Add expense"}
                 </button>
