@@ -98,7 +98,7 @@ export default async function TripDetailsPage({
         include: {
           performer: { select: { id: true, name: true, email: true, username: true } },
         },
-        orderBy: { timestamp: "asc" },
+        orderBy: { timestamp: "desc" },
       },
     },
   });
