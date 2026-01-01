@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { X } from "lucide-react";
+import { Check, Handshake, X } from "lucide-react";
 
 import MaterialButton from "@/components/ui/MaterialButton";
 import MaterialCard from "@/components/ui/MaterialCard";
@@ -31,12 +31,17 @@ export default function SettlementList({ tripId, settlements, memberLabelById }:
   const [amountText, setAmountText] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [settledKeys, setSettledKeys] = useState<Record<string, true>>({});
+
+  const displayLabel = (raw: string) => (raw.startsWith("@") ? raw.slice(1) : raw);
+
+  const settlementKey = (s: SettlementTx) => `${s.payer_id}:${s.payee_id}`;
 
   const selectedLabels = useMemo(() => {
     if (!selected) return null;
     return {
-      payer: memberLabelById[selected.payer_id] ?? "Unknown member",
-      payee: memberLabelById[selected.payee_id] ?? "Unknown member",
+      payer: displayLabel(memberLabelById[selected.payer_id] ?? "Unknown member"),
+      payee: displayLabel(memberLabelById[selected.payee_id] ?? "Unknown member"),
     };
   }, [memberLabelById, selected]);
 
@@ -86,42 +91,61 @@ export default function SettlementList({ tripId, settlements, memberLabelById }:
         setError(res.message);
         return;
       }
+      setSettledKeys((prev) => ({ ...prev, [settlementKey(selected)]: true }));
       close();
     });
   };
 
   return (
     <>
-      <ul className="mt-3 divide-y divide-white/10">
+      <ul className="mt-4 space-y-3">
         {settlements.map((s, idx) => {
-          const payer = memberLabelById[s.payer_id] ?? "Unknown member";
-          const payee = memberLabelById[s.payee_id] ?? "Unknown member";
+          const payer = displayLabel(memberLabelById[s.payer_id] ?? "Unknown member");
+          const payee = displayLabel(memberLabelById[s.payee_id] ?? "Unknown member");
+          const key = settlementKey(s);
+          const isSettled = Boolean(settledKeys[key]);
+          const amountLabel = formatCurrency(s.amount);
 
           return (
             <li
               key={`${s.payer_id}-${s.payee_id}-${idx}`}
-              className="flex items-center justify-between gap-4 py-2"
+              className="rounded-[18px] bg-[#2A2A2A] p-4"
             >
-              <div className="min-w-0">
-                <p className="text-sm">
-                  <span className="font-medium">{payer}</span> pays{" "}
-                  <span className="font-medium">{payee}</span>
-                </p>
-                <p className="text-xs text-[#C4C7C5]">{formatCurrency(s.amount)}</p>
-              </div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[#E3E3E3]">
+                    <span className="font-semibold">{payer}</span> pays <span className="font-semibold">{payee}</span>
+                  </p>
 
-              <MaterialButton
-                variant="tonal"
-                className="h-10 px-5 py-0"
-                onClick={() => {
-                  setSelected(s);
-                  setOpen(true);
-                  setAmountText(s.amount.toFixed(2));
-                  setError(null);
-                }}
-              >
-                Mark as paid
-              </MaterialButton>
+                  <p className="mt-2 whitespace-nowrap text-2xl font-semibold tabular-nums text-[#E3E3E3]">
+                    {amountLabel}
+                  </p>
+                </div>
+
+                <MaterialButton
+                  variant="filled"
+                  className="h-11 w-full shrink-0 whitespace-nowrap px-4 py-0 sm:w-auto"
+                  disabled={isSettled || isPending}
+                  aria-label={
+                    isSettled
+                      ? `Settled: ${payer} paid ${payee} ${formatCurrency(s.amount)}`
+                      : `Settle ${formatCurrency(s.amount)} from ${payer} to ${payee}`
+                  }
+                  onClick={() => {
+                    setSelected(s);
+                    setOpen(true);
+                    setAmountText(s.amount.toFixed(2));
+                    setError(null);
+                  }}
+                >
+                  {isSettled ? (
+                    <Check className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <Handshake className="h-4 w-4" aria-hidden="true" />
+                  )}
+                  {isSettled ? "Settled" : `Settle ${amountLabel}`}
+                </MaterialButton>
+              </div>
             </li>
           );
         })}
@@ -137,9 +161,9 @@ export default function SettlementList({ tripId, settlements, memberLabelById }:
           <MaterialCard className="relative w-full max-w-md p-5" role="dialog" aria-modal="true">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-base font-semibold tracking-tight">Confirm payment</h3>
+                <h3 className="text-base font-semibold tracking-tight">Confirm settlement</h3>
                 <p className="mt-1 text-sm text-[#C4C7C5]">
-                  Did {selectedLabels.payer} pay {selectedLabels.payee}?
+                  Confirm that {selectedLabels.payer} paid {selectedLabels.payee}.
                 </p>
               </div>
 
@@ -156,7 +180,7 @@ export default function SettlementList({ tripId, settlements, memberLabelById }:
             {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
 
             <div className="mt-4 space-y-2">
-              <label className="block text-xs font-medium text-[#C4C7C5]">Amount</label>
+              <label className="block text-xs font-medium text-[#C4C7C5]">Amount (Tk)</label>
               <MaterialInput
                 inputMode="decimal"
                 placeholder={selected.amount.toFixed(2)}
@@ -171,11 +195,12 @@ export default function SettlementList({ tripId, settlements, memberLabelById }:
               <p className="text-xs text-[#C4C7C5]">Suggested: {formatCurrency(selected.amount)}</p>
             </div>
 
-            <div className="mt-5 flex justify-end gap-2">
-              <MaterialButton variant="text" onClick={close} disabled={isPending}>
-                Cancel
-              </MaterialButton>
-              <MaterialButton onClick={confirm} disabled={isPending}>
+            <div className="mt-5">
+              <MaterialButton
+                className="h-11 w-full whitespace-nowrap px-6 py-0"
+                onClick={confirm}
+                disabled={isPending}
+              >
                 {isPending ? "Saving…" : "Confirm payment"}
               </MaterialButton>
             </div>
