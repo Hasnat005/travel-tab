@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useActionState, useCallback, useEffect, useId, useMemo, useState } from "react";
+import { useActionState, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { createExpense } from "@/app/_actions/expenses";
 import MaterialButton from "@/components/ui/MaterialButton";
@@ -19,6 +20,30 @@ type Props = {
 const initialState = { ok: false as const, message: undefined as string | undefined };
 
 type SplitMode = "equal" | "custom" | "percent";
+
+function todayDateInputValue(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function buildEqualPercents(memberIds: string[]): Record<string, string> {
+  if (memberIds.length === 0) return {};
+
+  // Use 2-decimal fixed units that sum to exactly 100.00
+  const totalUnits = 10000;
+  const base = Math.floor(totalUnits / memberIds.length);
+  const remainder = totalUnits - base * memberIds.length;
+
+  const result: Record<string, string> = {};
+  for (let index = 0; index < memberIds.length; index++) {
+    const units = base + (index < remainder ? 1 : 0);
+    result[memberIds[index]!] = (units / 100).toFixed(2);
+  }
+  return result;
+}
 
 function toCents(amount: number) {
   return Math.round((amount + Number.EPSILON) * 100);
@@ -66,6 +91,15 @@ function splitCentsByPercents(totalCents: number, items: Array<{ user_id: string
   return bases.map((b) => ({ user_id: b.user_id, cents: b.cents }));
 }
 
+function formatCurrency(amount: number, currency = "USD") {
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
+  } catch {
+    const sign = amount < 0 ? "-" : "";
+    return `${sign}$${Math.abs(amount).toFixed(2)}`;
+  }
+}
+
 export function AddExpenseModal({
   tripId,
   members,
@@ -84,6 +118,9 @@ export function AddExpenseModal({
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState("");
 
+  const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [touched, setTouched] = useState({ description: false, amount: false, date: false });
+
   const [splitMode, setSplitMode] = useState<SplitMode>("equal");
   const [payerAmounts, setPayerAmounts] = useState<Record<string, string>>({});
   const [customShareAmounts, setCustomShareAmounts] = useState<Record<string, string>>({});
@@ -91,29 +128,136 @@ export function AddExpenseModal({
 
   const memberIds = useMemo(() => members.map((m) => m.id), [members]);
 
+  const [initialSnapshot, setInitialSnapshot] = useState<string>("");
+  const stableRecordString = useCallback((record: Record<string, string>) => {
+    return Object.keys(record)
+      .sort()
+      .map((k) => `${k}:${record[k] ?? ""}`)
+      .join("|");
+  }, []);
+
+  const currentSnapshot = useMemo(() => {
+    return [
+      `d:${description}`,
+      `a:${amount}`,
+      `dt:${date}`,
+      `m:${splitMode}`,
+      `p:${stableRecordString(payerAmounts)}`,
+      `c:${stableRecordString(customShareAmounts)}`,
+      `pc:${stableRecordString(percentShares)}`,
+    ].join("\n");
+  }, [amount, customShareAmounts, date, description, payerAmounts, percentShares, splitMode, stableRecordString]);
+
+  const isDirty = open && initialSnapshot !== "" && currentSnapshot !== initialSnapshot;
+
   const close = useCallback(() => setOpen(false), []);
+  const requestClose = useCallback(() => {
+    if (isDirty && !pending) {
+      const okToClose = window.confirm("Discard this expense? Your changes will be lost.");
+      if (!okToClose) return;
+    }
+
+    setOpen(false);
+  }, [isDirty, pending]);
+
   const openModal = useCallback(() => {
     setDescription("");
     setAmount("");
-    setDate("");
+    setDate(todayDateInputValue());
     setSplitMode("equal");
+    setSubmitAttempted(false);
+    setTouched({ description: false, amount: false, date: false });
 
     const nextPayers: Record<string, string> = {};
     const nextCustom: Record<string, string> = {};
     const nextPercents: Record<string, string> = {};
-    const defaultPercent = members.length > 0 ? (100 / members.length).toFixed(2) : "0";
+
+    const percentDefaults = buildEqualPercents(members.map((m) => m.id));
 
     for (const m of members) {
       nextPayers[m.id] = m.id === currentUserId ? "" : "0";
       nextCustom[m.id] = "0";
-      nextPercents[m.id] = defaultPercent;
+      nextPercents[m.id] = percentDefaults[m.id] ?? "0";
     }
 
     setPayerAmounts(nextPayers);
     setCustomShareAmounts(nextCustom);
     setPercentShares(nextPercents);
+
+    setInitialSnapshot(
+      [
+        `d:`,
+        `a:`,
+        `dt:${todayDateInputValue()}`,
+        `m:equal`,
+        `p:${stableRecordString(nextPayers)}`,
+        `c:${stableRecordString(nextCustom)}`,
+        `pc:${stableRecordString(nextPercents)}`,
+      ].join("\n")
+    );
+
     setOpen(true);
-  }, [currentUserId, members]);
+  }, [currentUserId, members, stableRecordString]);
+
+  const totals = useMemo(() => {
+    const total = parseMoney(amount);
+    const totalCents = Number.isFinite(total) && total > 0 ? toCents(total) : 0;
+
+    const payerCents = members.map((m) => ({
+      user_id: m.id,
+      cents: toCents(parseMoney(payerAmounts[m.id] ?? "0")),
+    }));
+    const paidSumCents = payerCents.reduce((s, p) => s + p.cents, 0);
+
+    let shareCents: Array<{ user_id: string; cents: number }> | null = null;
+    let percentSum = 0;
+
+    if (totalCents > 0 && memberIds.length > 0) {
+      if (splitMode === "equal") {
+        shareCents = splitCentsEqually(totalCents, memberIds);
+      } else if (splitMode === "custom") {
+        shareCents = members.map((m) => ({
+          user_id: m.id,
+          cents: toCents(parseMoney(customShareAmounts[m.id] ?? "0")),
+        }));
+      } else if (splitMode === "percent") {
+        const percentEntries = members.map((m) => ({
+          user_id: m.id,
+          percent: parseMoney(percentShares[m.id] ?? "0"),
+        }));
+        percentSum = percentEntries.reduce((s, e) => s + (Number.isFinite(e.percent) ? e.percent : 0), 0);
+        shareCents = splitCentsByPercents(totalCents, percentEntries);
+      }
+    }
+
+    const owedSumCents = shareCents?.reduce((s, e) => s + e.cents, 0) ?? 0;
+
+    return {
+      total,
+      totalCents,
+      payerCents,
+      paidSumCents,
+      owedSumCents,
+      percentSum,
+      shareCents,
+    };
+  }, [amount, customShareAmounts, memberIds, members, payerAmounts, percentShares, splitMode]);
+
+  const topFieldErrors = useMemo(() => {
+    const desc = description.trim();
+    const total = parseMoney(amount);
+
+    const showDesc = submitAttempted || touched.description;
+    const showAmount = submitAttempted || touched.amount;
+    const showDate = submitAttempted || touched.date;
+
+    return {
+      description: showDesc && !desc ? "Description is required." : null,
+      amount:
+        showAmount && (!Number.isFinite(total) || total <= 0) ? "Amount must be greater than 0." : null,
+      date: showDate && !date ? "Date is required." : null,
+    };
+  }, [amount, date, description, submitAttempted, touched.amount, touched.date, touched.description]);
 
   const payloadComputation = useMemo(() => {
     const desc = description.trim();
@@ -212,15 +356,28 @@ export function AddExpenseModal({
     };
   }, [amount, customShareAmounts, date, description, memberIds, members, payerAmounts, percentShares, splitMode, tripId]);
 
+  const prevPendingRef = useRef(false);
   useEffect(() => {
+    const wasPending = prevPendingRef.current;
+    prevPendingRef.current = pending;
+
+    // Only react when a submission just finished.
+    if (!open || !wasPending || pending) return;
+
     if (state.ok) {
+      toast.success("Expense added");
       queueMicrotask(close);
+      return;
     }
-  }, [close, state.ok]);
+
+    if (state.message) {
+      toast.error(state.message);
+    }
+  }, [close, open, pending, state.message, state.ok]);
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") requestClose();
     }
 
     if (open) {
@@ -229,7 +386,7 @@ export function AddExpenseModal({
     }
 
     return;
-  }, [close, open]);
+  }, [open, requestClose]);
 
   return (
     <>
@@ -251,7 +408,7 @@ export function AddExpenseModal({
         >
           <button
             type="button"
-            onClick={close}
+            onClick={requestClose}
             className="absolute inset-0 bg-black/40"
             aria-label="Close"
           />
@@ -269,14 +426,14 @@ export function AddExpenseModal({
 
               <button
                 type="button"
-                onClick={close}
+                onClick={requestClose}
                 className="rounded-md px-2 py-1 text-sm text-black/60 hover:text-black dark:text-zinc-400 dark:hover:text-zinc-50"
               >
                 Close
               </button>
             </div>
 
-            <form action={formAction} className="mt-4 grid gap-3">
+            <form action={formAction} className="mt-4 flex max-h-[78vh] flex-col" onSubmit={() => setSubmitAttempted(true)}>
               <input type="hidden" name="tripId" value={tripId} />
 
               <input
@@ -284,6 +441,12 @@ export function AddExpenseModal({
                 name="payload"
                 value={payloadComputation.ok ? payloadComputation.payload : ""}
               />
+
+              <div className="grid gap-3 overflow-y-auto pr-1">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Expense info</p>
+                <p className="text-xs text-black/60 dark:text-zinc-400">What was it and how much?</p>
+              </div>
 
               <label className="flex flex-col gap-1">
                 <span className="text-sm font-medium text-black/80 dark:text-zinc-200">
@@ -294,9 +457,13 @@ export function AddExpenseModal({
                   required
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  onBlur={() => setTouched((t) => ({ ...t, description: true }))}
                   className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
                   placeholder="e.g., Lunch"
                 />
+                {topFieldErrors.description ? (
+                  <span className="text-xs text-red-700 dark:text-red-400">{topFieldErrors.description}</span>
+                ) : null}
               </label>
 
               <div className="grid gap-3 sm:grid-cols-2">
@@ -335,9 +502,13 @@ export function AddExpenseModal({
                         return next;
                       });
                     }}
+                    onBlur={() => setTouched((t) => ({ ...t, amount: true }))}
                     className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
                     placeholder="50.00"
                   />
+                  {topFieldErrors.amount ? (
+                    <span className="text-xs text-red-700 dark:text-red-400">{topFieldErrors.amount}</span>
+                  ) : null}
                 </label>
 
                 <label className="flex flex-col gap-1">
@@ -350,25 +521,46 @@ export function AddExpenseModal({
                     required
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
+                    onBlur={() => setTouched((t) => ({ ...t, date: true }))}
                     className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
                   />
+                  {topFieldErrors.date ? (
+                    <span className="text-xs text-red-700 dark:text-red-400">{topFieldErrors.date}</span>
+                  ) : null}
                 </label>
               </div>
 
-              <label className="flex flex-col gap-1">
-                <span className="text-sm font-medium text-black/80 dark:text-zinc-200">
-                  Split mode
-                </span>
-                <select
-                  value={splitMode}
-                  onChange={(e) => setSplitMode(e.target.value as SplitMode)}
-                  className="h-11 rounded-lg border border-black/8 bg-transparent px-3 text-black outline-none dark:border-white/[.145] dark:text-zinc-50"
-                >
-                  <option value="equal">Equal split</option>
-                  <option value="custom">Custom amounts</option>
-                  <option value="percent">Percentages</option>
-                </select>
-              </label>
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Split</p>
+                <p className="text-xs text-black/60 dark:text-zinc-400">How should this be shared?</p>
+
+                <div role="radiogroup" aria-label="Split mode" className="grid grid-cols-3 gap-2">
+                  {([
+                    { key: "equal" as const, label: "Equal" },
+                    { key: "custom" as const, label: "Amounts" },
+                    { key: "percent" as const, label: "%" },
+                  ] satisfies Array<{ key: SplitMode; label: string }>).map((item) => {
+                    const selected = splitMode === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => setSplitMode(item.key)}
+                        className={
+                          "h-11 rounded-lg border px-3 text-sm font-medium transition-colors " +
+                          (selected
+                            ? "border-black/15 bg-black/4 text-black dark:border-white/20 dark:bg-white/10 dark:text-zinc-50"
+                            : "border-black/8 bg-transparent text-black/80 hover:bg-black/4 dark:border-white/[.145] dark:text-zinc-200 dark:hover:bg-white/10")
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div className="rounded-lg border border-black/8 p-3 dark:border-white/[.145]">
                 <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Payers</p>
@@ -398,13 +590,36 @@ export function AddExpenseModal({
                     </div>
                   ))}
                 </div>
-              </div>
 
-              {!payloadComputation.ok ? (
-                <p className="text-sm text-red-700 dark:text-red-400">
-                  {payloadComputation.message}
-                </p>
-              ) : null}
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-black/60 dark:text-zinc-400">
+                  <span>
+                    Paid {formatCurrency(fromCents(totals.paidSumCents))} of {formatCurrency(fromCents(totals.totalCents))}
+                  </span>
+                  <span className="tabular-nums">
+                    {totals.totalCents - totals.paidSumCents === 0
+                      ? "✓"
+                      : `${totals.totalCents - totals.paidSumCents > 0 ? "Remaining" : "Over"} ${formatCurrency(
+                          fromCents(Math.abs(totals.totalCents - totals.paidSumCents))
+                        )}`}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid gap-1">
+                  {members.map((m) => {
+                    const paidCents = totals.payerCents.find((p) => p.user_id === m.id)?.cents ?? 0;
+                    return (
+                      <div key={m.id} className="flex items-center justify-between gap-3 text-xs">
+                        <span className="truncate text-black/70 dark:text-zinc-300">
+                          {m.name?.trim() ? m.name : m.email}
+                        </span>
+                        <span className="tabular-nums text-black/60 dark:text-zinc-400">
+                          {formatCurrency(fromCents(paidCents))}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
               <div className="rounded-lg border border-black/8 p-3 dark:border-white/[.145]">
                 <p className="text-sm font-medium text-black/80 dark:text-zinc-200">Shares</p>
@@ -470,21 +685,65 @@ export function AddExpenseModal({
                     ))}
                   </div>
                 ) : null}
+
+                <div className="mt-3 flex items-center justify-between gap-3 text-xs text-black/60 dark:text-zinc-400">
+                  <span>
+                    Owed {formatCurrency(fromCents(totals.owedSumCents))} of {formatCurrency(fromCents(totals.totalCents))}
+                  </span>
+                  <span className="tabular-nums">
+                    {splitMode === "percent" ? `Percent total ${totals.percentSum.toFixed(2)}%` : null}
+                  </span>
+                </div>
+
+                {totals.shareCents ? (
+                  <div className="mt-3 grid gap-1">
+                    {members.map((m) => {
+                      const owedCents = totals.shareCents?.find((s) => s.user_id === m.id)?.cents ?? 0;
+                      return (
+                        <div key={m.id} className="flex items-center justify-between gap-3 text-xs">
+                          <span className="truncate text-black/70 dark:text-zinc-300">
+                            {m.name?.trim() ? m.name : m.email}
+                          </span>
+                          <span className="tabular-nums text-black/60 dark:text-zinc-400">
+                            {formatCurrency(fromCents(owedCents))}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
 
-              {state.message ? (
-                <p className="text-sm text-red-700 dark:text-red-400">
-                  {state.message}
-                </p>
-              ) : null}
+              </div>
 
-              <button
-                type="submit"
-                disabled={pending || !payloadComputation.ok}
-                className="mt-1 inline-flex h-11 w-full items-center justify-center rounded-full border border-black/8 px-5 text-sm font-medium transition-colors hover:bg-black/4 disabled:opacity-60 dark:border-white/[.145] dark:hover:bg-white/10"
-              >
-                {pending ? "Adding…" : "Add expense"}
-              </button>
+              <div className="sticky bottom-0 mt-3 border-t border-black/8 bg-white pt-3 dark:border-white/[.145] dark:bg-black">
+                {totals.totalCents > 0 ? (
+                  <div className="mb-2 rounded-lg border border-black/8 p-3 text-xs text-black/60 dark:border-white/[.145] dark:text-zinc-400">
+                    <p className="font-medium text-black/80 dark:text-zinc-200">Summary</p>
+                    <p className="mt-1">
+                      Total {formatCurrency(fromCents(totals.totalCents))} · Paid {formatCurrency(fromCents(totals.paidSumCents))} · Owed {formatCurrency(fromCents(totals.owedSumCents))}
+                    </p>
+                  </div>
+                ) : null}
+
+                {!payloadComputation.ok ? (
+                  submitAttempted || isDirty ? (
+                    <p className="mb-2 text-sm text-red-700 dark:text-red-400">{payloadComputation.message}</p>
+                  ) : null
+                ) : null}
+
+                {state.message ? (
+                  <p className="mb-2 text-sm text-red-700 dark:text-red-400">{state.message}</p>
+                ) : null}
+
+                <button
+                  type="submit"
+                  disabled={pending || !payloadComputation.ok}
+                  className="inline-flex h-11 w-full items-center justify-center rounded-full border border-black/8 px-5 text-sm font-medium transition-colors hover:bg-black/4 disabled:opacity-60 dark:border-white/[.145] dark:hover:bg-white/10"
+                >
+                  {pending ? "Adding…" : "Add expense"}
+                </button>
+              </div>
             </form>
           </div>
         </div>

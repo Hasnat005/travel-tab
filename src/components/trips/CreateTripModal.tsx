@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useState } from "react";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import { createTrip } from "@/app/_actions/trips";
 import MaterialButton from "@/components/ui/MaterialButton";
@@ -14,6 +16,7 @@ export function CreateTripModal({
 }) {
   const [open, setOpen] = useState(false);
   const dialogTitleId = useId();
+  const router = useRouter();
 
   const close = useCallback(() => setOpen(false), []);
   const openModal = useCallback(() => setOpen(true), []);
@@ -30,6 +33,28 @@ export function CreateTripModal({
 
     return;
   }, [close, open]);
+
+  const onSubmit = useCallback(
+    async (formData: FormData) => {
+      try {
+        const result = await createTrip(formData);
+        if (!result.success) {
+          toast.error(result.error || "Failed to create trip.");
+          if (result.redirectTo) {
+            router.push(result.redirectTo);
+          }
+          return;
+        }
+
+        toast.success("Trip created successfully!");
+        close();
+        router.refresh();
+      } catch {
+        toast.error("Failed to create trip.");
+      }
+    },
+    [close, router]
+  );
 
   return (
     <>
@@ -71,7 +96,7 @@ export function CreateTripModal({
               </button>
             </div>
 
-            <form action={createTrip} className="mt-4 grid gap-3 md:grid-cols-2">
+            <form action={onSubmit} className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-1 md:col-span-2">
                 <span className="text-sm font-medium text-[#E3E3E3]">
                   Trip name

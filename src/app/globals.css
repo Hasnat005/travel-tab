@@ -3,6 +3,8 @@
 @import "tailwindcss";
 
 :root {
+  color-scheme: dark;
+
   /* Material Design 3 (Dark) tokens */
   --md-sys-color-surface: #1e1e1e;
   --md-sys-color-primary: #a8c7fa;

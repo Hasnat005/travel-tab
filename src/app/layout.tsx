@@ -5,6 +5,8 @@ import "./globals.css";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import ResponsiveNavbar from "@/components/nav/ResponsiveNavbar";
+import PerformanceMeasureGuard from "@/components/dev/PerformanceMeasureGuard";
+import { Toaster } from "sonner";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -29,10 +31,11 @@ export default function RootLayout({
   const supabasePromise = createSupabaseServerClient();
 
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <PerformanceMeasureGuard />
         <div className="min-h-screen">
           <header
             className={
@@ -63,6 +66,8 @@ export default function RootLayout({
             {children}
           </main>
         </div>
+
+        <Toaster position="bottom-right" richColors theme="dark" />
       </body>
     </html>
   );

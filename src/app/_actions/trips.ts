@@ -8,6 +8,10 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
+type CreateTripResult =
+  | { success: true }
+  | { success: false; error: string; redirectTo?: string };
+
 const createTripSchema = z
   .object({
     name: z.string().trim().min(1, "Trip name is required"),
@@ -33,14 +37,14 @@ function parseDateOnly(value: string): Date {
   return date;
 }
 
-export async function createTrip(formData: FormData) {
+export async function createTrip(formData: FormData): Promise<CreateTripResult> {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect("/login");
+    return { success: false, error: "Please log in to create a trip.", redirectTo: "/login" };
   }
 
   const parsed = createTripSchema.safeParse({
@@ -53,66 +57,78 @@ export async function createTrip(formData: FormData) {
 
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Invalid input";
-    redirect(`/trips?message=${encodeURIComponent(message)}`);
+    return { success: false, error: message };
   }
 
   const startDate = parseDateOnly(parsed.data.start_date);
   const endDate = parseDateOnly(parsed.data.end_date);
   if (endDate.getTime() < startDate.getTime()) {
-    redirect("/trips?message=End%20date%20must%20be%20after%20start%20date");
+    return { success: false, error: "End date must be after start date" };
   }
 
   // Supabase Auth users live in `auth.users`, but our app models a `User` table in `public`.
   // Ensure a corresponding row exists BEFORE inserting anything with FK references.
-  await prisma.user.upsert({
-    where: { id: user.id },
-    create: {
-      id: user.id,
-      email: user.email ?? `${user.id}@example.invalid`,
-      name:
-        typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
-    },
-    update: {
-      email: user.email ?? undefined,
-      name:
-        typeof user.user_metadata?.name === "string"
-          ? user.user_metadata.name
-          : undefined,
-    },
-  });
-
-  await prisma.$transaction(async (tx) => {
-    const created = await tx.trip.create({
-      data: {
-        creator_id: user.id,
-        name: parsed.data.name,
-        destination: parsed.data.destination,
-        start_date: startDate,
-        end_date: endDate,
-        notes: parsed.data.notes ? parsed.data.notes : null,
-        members: { create: { user_id: user.id } },
+  try {
+    await prisma.user.upsert({
+      where: { id: user.id },
+      create: {
+        id: user.id,
+        email: user.email ?? `${user.id}@example.invalid`,
+        name:
+          typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
+        username:
+          typeof user.user_metadata?.username === "string"
+            ? user.user_metadata.username
+            : null,
       },
-      select: { id: true },
+      update: {
+        email: user.email ?? undefined,
+        name:
+          typeof user.user_metadata?.name === "string"
+            ? user.user_metadata.name
+            : undefined,
+        username:
+          typeof user.user_metadata?.username === "string"
+            ? user.user_metadata.username
+            : undefined,
+      },
     });
 
-    await tx.tripLog.create({
-      data: {
-        trip_id: created.id,
-        action_type: "TRIP_CREATED",
-        performed_by: user.id,
-        timestamp: new Date(),
-        details: {
+    await prisma.$transaction(async (tx) => {
+      const created = await tx.trip.create({
+        data: {
+          creator_id: user.id,
           name: parsed.data.name,
           destination: parsed.data.destination,
+          start_date: startDate,
+          end_date: endDate,
+          notes: parsed.data.notes ? parsed.data.notes : null,
+          members: { create: { user_id: user.id } },
         },
-      },
+        select: { id: true },
+      });
+
+      await tx.tripLog.create({
+        data: {
+          trip_id: created.id,
+          action_type: "TRIP_CREATED",
+          performed_by: user.id,
+          timestamp: new Date(),
+          details: {
+            name: parsed.data.name,
+            destination: parsed.data.destination,
+          },
+        },
+      });
+
+      return created;
     });
 
-    return created;
-  });
-
-  revalidatePath("/trips");
-  redirect("/trips");
+    revalidatePath("/trips");
+    return { success: true };
+  } catch {
+    return { success: false, error: "Failed to create trip." };
+  }
 }
 
 export async function getUserTrips() {
@@ -178,7 +194,7 @@ export async function addMember(tripId: string, email: string): Promise<AddMembe
 
   const invitedUser = await prisma.user.findUnique({
     where: { email: normalizedEmail },
-    select: { id: true, email: true, name: true },
+    select: { id: true, email: true, name: true, username: true },
   });
 
   if (!invitedUser) {
@@ -210,7 +226,7 @@ export async function addMember(tripId: string, email: string): Promise<AddMembe
     const [inviter, trip] = await Promise.all([
       tx.user.findUnique({
         where: { id: user.id },
-        select: { id: true, name: true, email: true },
+        select: { id: true, name: true, email: true, username: true },
       }),
       tx.trip.findUnique({
         where: { id: tripId },
@@ -220,8 +236,10 @@ export async function addMember(tripId: string, email: string): Promise<AddMembe
 
     // Trip might have been deleted mid-flight; membership insert succeeded, so still return success.
     if (trip) {
-      const inviterLabel = inviter?.name?.trim() || inviter?.email || user.email || user.id;
-      const invitedLabel = invitedUser.name?.trim() || invitedUser.email;
+      const inviterLabel =
+        inviter?.username?.trim() || inviter?.name?.trim() || inviter?.email || user.email || user.id;
+      const invitedLabel =
+        invitedUser.username?.trim() || invitedUser.name?.trim() || invitedUser.email;
       await tx.tripLog.create({
         data: {
           trip_id: tripId,

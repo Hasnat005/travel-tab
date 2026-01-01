@@ -6,6 +6,13 @@ import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { prisma } from "@/lib/prisma";
 
+function parseUsername(value: unknown): string | null {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(raw)) return null;
+  return raw;
+}
+
 function buildRedirectPath(pathname: string, message: string) {
   const params = new URLSearchParams({ message });
   return `${pathname}?${params.toString()}`;
@@ -21,11 +28,24 @@ async function getOrigin() {
 }
 
 export async function signUp(formData: FormData) {
+  const username = parseUsername(formData.get("username"));
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
+  if (!username) {
+    redirect(buildRedirectPath(
+      "/signup",
+      "Username is required (3–20 characters: letters, numbers, underscore)."
+    ));
+  }
+
   if (!email || !password) {
     redirect(buildRedirectPath("/signup", "Email and password are required."));
+  }
+
+  const existing = await prisma.user.findUnique({ where: { username } });
+  if (existing) {
+    redirect(buildRedirectPath("/signup", "Username is already taken."));
   }
 
   const supabase = await createSupabaseServerClient();
@@ -36,6 +56,9 @@ export async function signUp(formData: FormData) {
     password,
     options: {
       emailRedirectTo: `${origin}/auth/callback`,
+      data: {
+        username,
+      },
     },
   });
 
@@ -53,6 +76,10 @@ export async function signUp(formData: FormData) {
           typeof data.user.user_metadata?.name === "string"
             ? data.user.user_metadata.name
             : null,
+        username:
+          typeof data.user.user_metadata?.username === "string"
+            ? data.user.user_metadata.username
+            : username,
       },
       update: {
         email: data.user.email ?? undefined,
@@ -60,30 +87,49 @@ export async function signUp(formData: FormData) {
           typeof data.user.user_metadata?.name === "string"
             ? data.user.user_metadata.name
             : undefined,
+        username:
+          typeof data.user.user_metadata?.username === "string"
+            ? data.user.user_metadata.username
+            : username,
       },
     });
   }
 
-  redirect(
-    buildRedirectPath(
-      "/login",
-      "Account created. If email confirmation is enabled, check your inbox to confirm before logging in."
-    )
-  );
+  redirect("/login");
 }
 
 export async function signIn(formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim();
+  const identifierRaw = String(formData.get("username") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
-  if (!email || !password) {
-    redirect(buildRedirectPath("/login", "Email and password are required."));
+  if (!identifierRaw || !password) {
+    redirect(buildRedirectPath("/login", "Username and password are required."));
+  }
+
+  const isEmail = identifierRaw.includes("@");
+  const username = isEmail ? null : parseUsername(identifierRaw);
+
+  if (!isEmail && !username) {
+    redirect(
+      buildRedirectPath(
+        "/login",
+        "Username must be 3–20 characters (letters, numbers, underscore)."
+      )
+    );
+  }
+
+  const loginEmail = isEmail
+    ? identifierRaw
+    : (await prisma.user.findUnique({ where: { username: username! } }))?.email;
+
+  if (!loginEmail) {
+    redirect(buildRedirectPath("/login", "Invalid username or password."));
   }
 
   const supabase = await createSupabaseServerClient();
 
   const { data, error } = await supabase.auth.signInWithPassword({
-    email,
+    email: loginEmail,
     password,
   });
 
@@ -92,6 +138,11 @@ export async function signIn(formData: FormData) {
   }
 
   if (data.user) {
+    const username =
+      typeof data.user.user_metadata?.username === "string"
+        ? parseUsername(data.user.user_metadata.username)
+        : null;
+
     await prisma.user.upsert({
       where: { id: data.user.id },
       create: {
@@ -101,6 +152,7 @@ export async function signIn(formData: FormData) {
           typeof data.user.user_metadata?.name === "string"
             ? data.user.user_metadata.name
             : null,
+        username: username,
       },
       update: {
         email: data.user.email ?? undefined,
@@ -108,33 +160,12 @@ export async function signIn(formData: FormData) {
           typeof data.user.user_metadata?.name === "string"
             ? data.user.user_metadata.name
             : undefined,
+        username: username ?? undefined,
       },
     });
   }
 
-  redirect("/account");
-}
-
-export async function signInWithGoogle() {
-  const supabase = await createSupabaseServerClient();
-  const origin = await getOrigin();
-
-  const { data, error } = await supabase.auth.signInWithOAuth({
-    provider: "google",
-    options: {
-      redirectTo: `${origin}/auth/callback`,
-    },
-  });
-
-  if (error) {
-    redirect(buildRedirectPath("/login", error.message));
-  }
-
-  if (!data.url) {
-    redirect(buildRedirectPath("/login", "Failed to start Google sign-in."));
-  }
-
-  redirect(data.url);
+  redirect("/trips");
 }
 
 export async function signOut() {

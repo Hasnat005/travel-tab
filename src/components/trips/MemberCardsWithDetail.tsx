@@ -6,6 +6,7 @@ import MaterialCard from "@/components/ui/MaterialCard";
 
 type MemberBalance = {
   user_id: string;
+  username?: string | null;
   name: string | null;
   email: string;
   paid: number;
@@ -21,7 +22,7 @@ type ClientExpense = {
   payers: Array<{
     user_id: string;
     amount_paid: number;
-    user: { name: string | null; email: string };
+    user: { name: string | null; email: string; username?: string | null };
   }>;
   shares: Array<{
     user_id: string;
@@ -71,7 +72,9 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
   const dialogTitleId = useId();
 
   const memberLabelById = useMemo(() => {
-    return new Map(members.map((m) => [m.user_id, m.name?.trim() || m.email]));
+    return new Map(
+      members.map((m) => [m.user_id, m.username?.trim() || m.name?.trim() || m.email])
+    );
   }, [members]);
 
   const [open, setOpen] = useState(false);
@@ -117,7 +120,9 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
           date: e.date,
           amount_paid: payer.amount_paid,
           total_amount: e.total_amount,
-          payersLabel: e.payers.map((p) => p.user.name?.trim() || p.user.email).join(", "),
+          payersLabel: e.payers
+            .map((p) => p.user.username?.trim() || p.user.name?.trim() || p.user.email)
+            .join(", "),
         };
       })
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
@@ -193,7 +198,7 @@ export default function MemberCardsWithDetail({ members, expenses, settlements }
           const isPositive = b.net > 0;
           const isNegative = b.net < 0;
           const netAbs = Math.abs(b.net);
-          const label = b.name?.trim() || b.email;
+              const label = b.username?.trim() || b.name?.trim() || b.email;
           const letter = (label.trim()?.[0] ?? "U").toUpperCase();
 
           return (

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { signIn, signInWithGoogle } from "@/app/_actions/auth";
+import { signIn } from "@/app/_actions/auth";
 import MaterialCard from "@/components/ui/MaterialCard";
 import MaterialButton from "@/components/ui/MaterialButton";
 import MaterialInput from "@/components/ui/MaterialInput";
@@ -25,13 +25,12 @@ export default async function LoginPage({
 
         <form action={signIn} className="mt-6 flex flex-col gap-4">
           <label className="flex flex-col gap-1">
-            <span className="text-sm font-medium text-[#E3E3E3]">Email</span>
+            <span className="text-sm font-medium text-[#E3E3E3]">Username</span>
             <MaterialInput
-              name="email"
-              type="email"
+              name="username"
               required
-              autoComplete="email"
-              placeholder="name@example.com"
+              autoComplete="username"
+              placeholder="e.g., hasnat005"
             />
           </label>
 
@@ -47,12 +46,6 @@ export default async function LoginPage({
 
           <MaterialButton type="submit" variant="filled" className="mt-1 w-full">
             Log in
-          </MaterialButton>
-        </form>
-
-        <form action={signInWithGoogle} className="mt-3">
-          <MaterialButton type="submit" variant="tonal" className="h-11 w-full">
-            Continue with Google
           </MaterialButton>
         </form>
 

@@ -83,20 +83,20 @@ export default async function TripDetailsPage({
     include: {
       members: {
         include: {
-          user: { select: { id: true, name: true, email: true } },
+          user: { select: { id: true, name: true, email: true, username: true } },
         },
       },
       expenses: {
         include: {
           // R6 prerequisite: include payers + shares.
-          payers: { include: { user: { select: { id: true, name: true, email: true } } } },
+          payers: { include: { user: { select: { id: true, name: true, email: true, username: true } } } },
           shares: true,
         },
         orderBy: { date: "desc" },
       },
       logs: {
         include: {
-          performer: { select: { id: true, name: true, email: true } },
+          performer: { select: { id: true, name: true, email: true, username: true } },
         },
         orderBy: { timestamp: "asc" },
       },
@@ -143,6 +143,7 @@ export default async function TripDetailsPage({
     const net = Number((paid - owed).toFixed(2));
     return {
       user_id: m.user_id,
+      username: m.user.username,
       name: m.user.name?.trim() ? m.user.name : null,
       email: m.user.email,
       paid,
@@ -162,7 +163,7 @@ export default async function TripDetailsPage({
     payers: e.payers.map((p) => ({
       user_id: p.user_id,
       amount_paid: p.amount_paid.toNumber(),
-      user: { name: p.user.name, email: p.user.email },
+      user: { name: p.user.name, email: p.user.email, username: p.user.username },
     })),
     shares: e.shares.map((s) => ({
       user_id: s.user_id,
@@ -188,7 +189,7 @@ export default async function TripDetailsPage({
   const settlements = debtResult.settlements;
 
   const memberLabelById = new Map(
-    trip.members.map((m) => [m.user_id, m.user.name?.trim() || m.user.email])
+    trip.members.map((m) => [m.user_id, m.user.username?.trim() || m.user.name?.trim() || m.user.email])
   );
 
   const tabItems = [
@@ -204,7 +205,7 @@ export default async function TripDetailsPage({
 
   const membersForModal = trip.members.map((m) => ({
     id: m.user_id,
-    name: m.user.name,
+    name: m.user.username?.trim() ? `@${m.user.username}` : m.user.name,
     email: m.user.email,
   }));
 

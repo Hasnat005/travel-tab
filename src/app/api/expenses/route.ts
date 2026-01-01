@@ -115,10 +115,14 @@ export async function POST(req: Request) {
       id: user.id,
       email: user.email ?? `${user.id}@example.invalid`,
       name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name : null,
+      username:
+        typeof user.user_metadata?.username === "string" ? user.user_metadata.username : null,
     },
     update: {
       email: user.email ?? undefined,
       name: typeof user.user_metadata?.name === "string" ? user.user_metadata.name : undefined,
+      username:
+        typeof user.user_metadata?.username === "string" ? user.user_metadata.username : undefined,
     },
   });
 
