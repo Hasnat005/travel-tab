@@ -644,3 +644,171 @@ export async function createExpense(
   revalidatePath(`/trips/${tripId}`);
   return { ok: true };
 }
+
+const recordSettlementSchema = z
+  .object({
+    tripId: z.string().uuid(),
+    payerId: z.string().uuid(),
+    payeeId: z.string().uuid(),
+    amount: moneySchema.refine((v) => v > 0, "Amount must be greater than 0"),
+  })
+  .strict();
+
+export async function recordSettlement(
+  tripId: string,
+  payerId: string,
+  payeeId: string,
+  amount: number
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { ok: false, message: "Not authenticated." };
+  }
+
+  const parsed = recordSettlementSchema.safeParse({ tripId, payerId, payeeId, amount });
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+  }
+
+  if (payerId === payeeId) {
+    return { ok: false, message: "Payer and payee must be different." };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    type UserLabelRow = { username: string | null; name: string | null; email: string };
+    type SettlementTx = {
+      tripMember: {
+        findUnique(args: {
+          where: { trip_id_user_id: { trip_id: string; user_id: string } };
+          select: { trip_id: true };
+        }): Promise<{ trip_id: string } | null>;
+        findMany(args: { where: { trip_id: string }; select: { user_id: true } }): Promise<
+          Array<{ user_id: string }>
+        >;
+      };
+      user: {
+        findUnique(args: {
+          where: { id: string };
+          select: { name: true; email: true; username: true };
+        }): Promise<UserLabelRow | null>;
+      };
+      expense: {
+        create(args: {
+          data: {
+            trip_id: string;
+            description: string;
+            total_amount: Prisma.Decimal;
+            date: Date;
+            is_settlement: boolean;
+          };
+          select: { id: true };
+        }): Promise<{ id: string }>;
+      };
+      expensePayer: {
+        create(args: {
+          data: { expense_id: string; user_id: string; amount_paid: Prisma.Decimal };
+        }): Promise<{ expense_id: string; user_id: string }>;
+      };
+      expenseShare: {
+        create(args: {
+          data: { expense_id: string; user_id: string; amount_owed: Prisma.Decimal };
+        }): Promise<{ expense_id: string; user_id: string }>;
+      };
+      tripLog: {
+        create(args: {
+          data: {
+            trip_id: string;
+            action_type: string;
+            performed_by: string;
+            details: Record<string, unknown>;
+            timestamp: Date;
+          };
+        }): Promise<{ id: string }>;
+      };
+    };
+
+    const settlementTx = tx as unknown as SettlementTx;
+
+    const membership = await settlementTx.tripMember.findUnique({
+      where: { trip_id_user_id: { trip_id: tripId, user_id: user.id } },
+      select: { trip_id: true },
+    });
+    if (!membership) {
+      throw new Error("Unauthorized");
+    }
+
+    const tripMembers = await settlementTx.tripMember.findMany({
+      where: { trip_id: tripId },
+      select: { user_id: true },
+    });
+    const memberSet = new Set(tripMembers.map((m) => m.user_id));
+    if (!memberSet.has(payerId) || !memberSet.has(payeeId)) {
+      throw new Error("Invalid members");
+    }
+
+    const [payer, payee, performer] = await Promise.all([
+      settlementTx.user.findUnique({ where: { id: payerId }, select: { name: true, email: true, username: true } }),
+      settlementTx.user.findUnique({ where: { id: payeeId }, select: { name: true, email: true, username: true } }),
+      settlementTx.user.findUnique({ where: { id: user.id }, select: { name: true, email: true, username: true } }),
+    ]);
+
+    const label = (u: UserLabelRow | null) => {
+      if (!u) return "User";
+      return u.username?.trim() ? `@${u.username.trim()}` : u.name?.trim() || u.email;
+    };
+
+    const payerLabel = label(payer);
+    const payeeLabel = label(payee);
+    const performerLabel = label(performer);
+
+    const settlementExpense = await settlementTx.expense.create({
+      data: {
+        trip_id: tripId,
+        description: `Payment to ${payeeLabel}`,
+        total_amount: new Prisma.Decimal(amount),
+        date: new Date(),
+        is_settlement: true,
+      },
+      select: { id: true },
+    });
+
+    await settlementTx.expensePayer.create({
+      data: {
+        expense_id: settlementExpense.id,
+        user_id: payerId,
+        amount_paid: new Prisma.Decimal(amount),
+      },
+    });
+
+    await settlementTx.expenseShare.create({
+      data: {
+        expense_id: settlementExpense.id,
+        user_id: payeeId,
+        amount_owed: new Prisma.Decimal(amount),
+      },
+    });
+
+    await settlementTx.tripLog.create({
+      data: {
+        trip_id: tripId,
+        action_type: "SETTLEMENT_RECORDED",
+        performed_by: user.id,
+        details: {
+          settlement_expense_id: settlementExpense.id,
+          payer_id: payerId,
+          payee_id: payeeId,
+          amount: Number(amount.toFixed(2)),
+          message: `${performerLabel} recorded a payment: ${payerLabel} paid ${payeeLabel} ${Number(amount).toFixed(2)}`,
+        },
+        timestamp: new Date(),
+      },
+    });
+  });
+
+  revalidatePath(`/trips/${tripId}`);
+  return { ok: true };
+}

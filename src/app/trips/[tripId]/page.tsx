@@ -1,5 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 
+import type { Prisma } from "@prisma/client";
+
 import { prisma } from "@/lib/prisma";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import AddExpenseModal from "@/components/expenses/AddExpenseModal";
@@ -8,6 +10,7 @@ import { calculateTripDebts } from "@/lib/debt-calculator";
 import MemberCardsWithDetail from "@/components/trips/MemberCardsWithDetail";
 import MaterialCard from "@/components/ui/MaterialCard";
 import InviteLinkButton from "@/components/trips/InviteLinkButton";
+import SettlementList from "@/components/trips/SettlementList";
 import { TripTabTransitionProvider } from "@/components/trips/TripTabTransitionContext";
 import TripTabNavClient from "@/components/trips/TripTabNavClient";
 import TripTabContentPending from "@/components/trips/TripTabContentPending";
@@ -110,16 +113,44 @@ export default async function TripDetailsPage({
     notFound();
   }
 
-  const expensesCount = trip._count.expenses;
+  const expensesCount = await prisma.expense.count({
+    where: { trip_id: tripId, is_settlement: false },
+  });
   const logsCount = trip._count.logs;
 
   const needsFullExpenses = tab === "overview" || tab === "settlement";
   const needsExpenseList = tab === "expenses";
   const needsLogs = tab === "activity";
 
+  type FullExpenseRow = {
+    id: string;
+    description: string;
+    date: Date;
+    total_amount: Prisma.Decimal;
+    is_settlement: boolean;
+    payers: Array<{
+      user_id: string;
+      amount_paid: Prisma.Decimal;
+      user: { id: string; name: string | null; email: string; username: string | null };
+    }>;
+    shares: Array<{ user_id: string; amount_owed: Prisma.Decimal }>;
+  };
+
+  type ListExpenseRow = {
+    id: string;
+    description: string;
+    date: Date;
+    total_amount: Prisma.Decimal;
+    payers: Array<{
+      user_id: string;
+      amount_paid: Prisma.Decimal;
+      user: { name: string | null; email: string; username: string | null };
+    }>;
+  };
+
   const [totalAgg, paidAgg, owedAgg, fullExpenses, listExpenses, logs] = await Promise.all([
     prisma.expense.aggregate({
-      where: { trip_id: tripId },
+      where: { trip_id: tripId, is_settlement: false },
       _sum: { total_amount: true },
     }),
     prisma.expensePayer.groupBy({
@@ -141,6 +172,7 @@ export default async function TripDetailsPage({
             description: true,
             date: true,
             total_amount: true,
+            is_settlement: true,
             payers: {
               select: {
                 user_id: true,
@@ -151,10 +183,10 @@ export default async function TripDetailsPage({
             shares: { select: { user_id: true, amount_owed: true } },
           },
         })
-      : Promise.resolve([]),
+      : Promise.resolve([] as FullExpenseRow[]),
     needsExpenseList
       ? prisma.expense.findMany({
-          where: { trip_id: tripId },
+          where: { trip_id: tripId, is_settlement: false },
           orderBy: [{ date: "desc" }, { created_at: "desc" }],
           select: {
             id: true,
@@ -170,7 +202,7 @@ export default async function TripDetailsPage({
             },
           },
         })
-      : Promise.resolve([]),
+      : Promise.resolve([] as ListExpenseRow[]),
     needsLogs
       ? prisma.tripLog.findMany({
           where: { trip_id: tripId },
@@ -186,7 +218,7 @@ export default async function TripDetailsPage({
       : Promise.resolve([]),
   ]);
 
-  const totalTripCost = totalAgg._sum.total_amount?.toNumber() ?? 0;
+  const totalTripCost = totalAgg._sum?.total_amount?.toNumber() ?? 0;
 
   // R6: Member Cards & Balances
   // paid = sum(payers.amount_paid), owed = sum(shares.amount_owed), net = paid - owed
@@ -224,9 +256,11 @@ export default async function TripDetailsPage({
 
   const yourBalance = memberBalances.find((m) => m.user_id === user.id) ?? null;
 
+  const nonSettlementFullExpenses = fullExpenses.filter((e) => !e.is_settlement);
+
   // Perf: only serialize per-expense details (large) when needed.
   const clientExpenses = tab === "overview"
-    ? fullExpenses.map((e) => ({
+    ? nonSettlementFullExpenses.map((e) => ({
         id: e.id,
         description: e.description,
         date: e.date.toISOString(),
@@ -261,12 +295,12 @@ export default async function TripDetailsPage({
       ).settlements
     : [];
 
-  const memberLabelById = new Map(
-    trip.members.map((m) => [
-      m.user_id,
-      m.user.username?.trim() ? `@${m.user.username.trim()}` : m.user.name?.trim() || m.user.email,
-    ])
-  );
+  const memberLabelEntries = trip.members.map((m) => [
+    m.user_id,
+    m.user.username?.trim() ? `@${m.user.username.trim()}` : m.user.name?.trim() || m.user.email,
+  ] as const);
+
+  const memberLabelByIdRecord = Object.fromEntries(memberLabelEntries);
 
   function userLabel(u: { username?: string | null; name?: string | null; email?: string | null | undefined }) {
     const username = u.username?.trim();
@@ -384,7 +418,7 @@ export default async function TripDetailsPage({
                   <p className="mt-3 text-sm text-[#C4C7C5]">Add your first expense to start splitting.</p>
                 ) : (
                   <ul className="mt-4 divide-y divide-white/10">
-                    {fullExpenses.slice(0, 3).map((e) => (
+                    {nonSettlementFullExpenses.slice(0, 3).map((e) => (
                       <li key={e.id} className="py-3">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
@@ -454,26 +488,15 @@ export default async function TripDetailsPage({
               {settlements.length === 0 ? (
                 <p className="mt-3 text-sm text-[#C4C7C5]">No settlements needed.</p>
               ) : (
-                <ul className="mt-3 divide-y divide-white/10">
-                  {settlements.map((s, idx) => {
-                    const payer = memberLabelById.get(s.payer_id) ?? "Unknown member";
-                    const payee = memberLabelById.get(s.payee_id) ?? "Unknown member";
-                    return (
-                      <li
-                        key={`${s.payer_id}-${s.payee_id}-${idx}`}
-                        className="flex items-center justify-between gap-4 py-2"
-                      >
-                        <p className="text-sm">
-                          <span className="font-medium">{payer}</span> pays{" "}
-                          <span className="font-medium">{payee}</span>
-                        </p>
-                        <p className="text-sm font-medium tabular-nums">
-                          {formatCurrency(s.amount)}
-                        </p>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <SettlementList
+                  tripId={tripId}
+                  settlements={settlements.map((s) => ({
+                    payer_id: s.payer_id,
+                    payee_id: s.payee_id,
+                    amount: s.amount,
+                  }))}
+                  memberLabelById={memberLabelByIdRecord}
+                />
               )}
             </MaterialCard>
           ) : null}

@@ -7,9 +7,9 @@ datasource db {
 }
 
 model User {
-  id    String  @id @default(uuid()) @db.Uuid
-  email String  @unique
-  name  String?
+  id       String  @id @default(uuid()) @db.Uuid
+  email    String  @unique
+  name     String?
   username String? @unique
 
   created_at DateTime @default(now())
@@ -39,9 +39,9 @@ model Trip {
 
   creator User @relation("UserTrips", fields: [creator_id], references: [id])
 
-  members TripMember[]
-  expenses Expense[]
-  logs     TripLog[]
+  members     TripMember[]
+  expenses    Expense[]
+  logs        TripLog[]
   invitations TripInvitation[]
 
   @@index([creator_id])
@@ -53,6 +53,10 @@ model Expense {
   description  String
   total_amount Decimal  @db.Decimal(10, 2)
   date         DateTime
+
+  // When true, this row represents a debt settlement payment.
+  // Settlements affect balances but should not contribute to "Total trip cost".
+  is_settlement Boolean @default(false)
 
   created_at DateTime @default(now())
 
