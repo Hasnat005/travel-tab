@@ -312,10 +312,10 @@ export default async function TripDetailsPage({
 
   const tabItems: { key: string; label: string }[] = [
     { key: "overview", label: "Overview" },
-    { key: "expenses", label: `Expenses (${expensesCount})` },
-    { key: "settlement", label: settlements.length > 0 ? `Settlement (${settlements.length})` : "Settlement" },
-    { key: "team", label: `Team (${trip.members.length})` },
-    { key: "activity", label: `Activity (${logsCount})` },
+    { key: "expenses", label: "Expenses" },
+    { key: "settlement", label: "Settlement" },
+    { key: "team", label: "Team" },
+    { key: "activity", label: "Activity" },
     { key: "settings", label: "Settings" },
   ];
 
