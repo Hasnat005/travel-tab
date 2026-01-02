@@ -1,12 +1,12 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useActionState, useTransition } from "react";
+import { Crown, MoreVertical } from "lucide-react";
+import { toast } from "sonner";
 
-import { addMemberAction, removeMemberAction } from "@/app/_actions/trips";
+import { createTripInvite, removeMemberAction } from "@/app/_actions/trips";
 import MaterialCard from "@/components/ui/MaterialCard";
 import MaterialButton from "@/components/ui/MaterialButton";
-import MaterialInput from "@/components/ui/MaterialInput";
-import InviteLinkButton from "@/components/trips/InviteLinkButton";
 
 type Member = {
   user_id: string;
@@ -15,6 +15,7 @@ type Member = {
     name: string | null;
     email: string;
     username?: string | null;
+    avatar_url?: string | null;
   };
 };
 
@@ -46,6 +47,27 @@ function obfuscateEmail(email: string) {
   return `${localPrefix}...@${domainPrefix}...${domainTld ? `.${domainTld}` : ""}`;
 }
 
+function displayNameForUser(user: Member["user"]) {
+  const username = user.username?.trim();
+  if (username) return `@${username}`;
+  const name = user.name?.trim();
+  if (name) return name;
+  return user.email;
+}
+
+function secondaryLabelForUser(user: Member["user"]) {
+  const username = user.username?.trim();
+  if (username) return user.name?.trim() ? user.name : null;
+  return obfuscateEmail(user.email);
+}
+
+function avatarInitialForUser(user: Member["user"]) {
+  const username = user.username?.trim();
+  const source = username || user.name?.trim() || user.email;
+  const first = source.trim().charAt(0);
+  return first ? first.toUpperCase() : "?";
+}
+
 export default function MemberList({
   tripId,
   creatorId,
@@ -57,24 +79,49 @@ export default function MemberList({
   currentUserId: string;
   members: Member[];
 }) {
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  const [state, formAction, isPending] = useActionState<AddMemberResult, FormData>(
-    addMemberAction,
-    { success: true }
-  );
+  const [isInvitePending, startInviteTransition] = useTransition();
 
   const [removeState, removeAction, removePending] = useActionState<
     RemoveMemberResult,
     FormData
   >(removeMemberAction, { success: true });
 
-  useEffect(() => {
-    if (state.success) {
-      // Clear input on success.
-      if (inputRef.current) inputRef.current.value = "";
+  async function handleShareInvite() {
+    let url: string;
+    try {
+      const res = await createTripInvite(tripId);
+      if (!res.success) {
+        toast.error(res.message);
+        return;
+      }
+      url = res.url;
+    } catch {
+      toast.error("Failed to create invite link.");
+      return;
     }
-  }, [state.success]);
+
+    const shareData: ShareData = {
+      title: "Join my Trip!",
+      text: "Click here to join this trip team:",
+      url,
+    };
+
+    if (navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // Ignore share cancellation/errors.
+      }
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(shareData.url ?? "");
+      toast.success("Link copied!");
+    } catch {
+      toast.error("Failed to copy link.");
+    }
+  }
 
   return (
     <MaterialCard>
@@ -87,9 +134,8 @@ export default function MemberList({
 
       <div className="mt-4 grid gap-3">
         {members.map((m) => {
-          const username = m.user.username?.trim();
-          const displayName = username ? `@${username}` : m.user.name?.trim() ? m.user.name : null;
-          const secondary = username ? (m.user.name?.trim() ? m.user.name : null) : obfuscateEmail(m.user.email);
+          const displayName = displayNameForUser(m.user);
+          const secondary = secondaryLabelForUser(m.user);
           const isCreator = creatorId != null && m.user_id === creatorId;
           const isSelf = m.user_id === currentUserId;
           const canRemoveOther = creatorId != null && currentUserId === creatorId;
@@ -101,28 +147,62 @@ export default function MemberList({
               key={m.user_id}
               className="flex items-center justify-between gap-3 rounded-[18px] bg-[#2A2A2A] px-4 py-3"
             >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <p className="truncate text-sm font-medium">
-                    {displayName ?? m.user.email}
-                  </p>
-                  {isCreator ? (
-                    <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-xs text-[#C4C7C5]">
-                      Creator
-                    </span>
+              <div className="flex min-w-0 flex-1 items-center gap-3">
+                <div className="shrink-0">
+                  {m.user.avatar_url ? (
+                    <img
+                      src={m.user.avatar_url}
+                      alt=""
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-10 w-10 items-center justify-center rounded-full bg-[#333537] text-sm font-semibold text-[#A8C7FA]"
+                      aria-hidden="true"
+                    >
+                      {avatarInitialForUser(m.user)}
+                    </div>
+                  )}
+                </div>
+
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate text-sm font-medium text-[#E3E3E3]">{displayName}</p>
+                    {isCreator ? (
+                      <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-yellow-500/30 bg-yellow-500/15 px-2.5 py-0.5 text-xs font-medium text-yellow-300">
+                        <Crown className="h-3.5 w-3.5" aria-hidden="true" />
+                        Creator
+                      </span>
+                    ) : null}
+                  </div>
+                  {secondary ? (
+                    <p className="truncate text-xs text-[#C4C7C5]">{secondary}</p>
                   ) : null}
                 </div>
-                {secondary ? <p className="truncate text-xs text-[#C4C7C5]">{secondary}</p> : null}
               </div>
 
               {canShowRemove ? (
-                <form action={removeAction} className="shrink-0">
-                  <input type="hidden" name="tripId" value={tripId} />
-                  <input type="hidden" name="memberUserId" value={m.user_id} />
-                  <MaterialButton type="submit" variant="text" disabled={removePending}>
-                    {removePending ? "Working…" : removeLabel}
-                  </MaterialButton>
-                </form>
+                <details className="relative shrink-0">
+                  <summary
+                    className="list-none inline-flex h-11 w-11 items-center justify-center rounded-full text-[#C4C7C5] hover:bg-white/5"
+                    aria-label={removeLabel}
+                  >
+                    <MoreVertical className="h-5 w-5" aria-hidden="true" />
+                  </summary>
+                  <div className="absolute right-0 z-10 mt-2 w-40 rounded-[14px] border border-white/10 bg-[#2A2A2A] p-1 shadow-lg">
+                    <form action={removeAction}>
+                      <input type="hidden" name="tripId" value={tripId} />
+                      <input type="hidden" name="memberUserId" value={m.user_id} />
+                      <button
+                        type="submit"
+                        disabled={removePending}
+                        className="flex w-full items-center rounded-[12px] px-3 py-2 text-left text-sm text-[#E3E3E3] hover:bg-white/5 disabled:opacity-60"
+                      >
+                        {removePending ? "Working…" : removeLabel}
+                      </button>
+                    </form>
+                  </div>
+                </details>
               ) : null}
             </div>
           );
@@ -135,34 +215,23 @@ export default function MemberList({
         </p>
       ) : null}
 
-      <form action={formAction} className="mt-4">
-        <input type="hidden" name="tripId" value={tripId} />
-
-        <label className="flex flex-col gap-1">
-          <span className="text-sm font-medium text-[#E3E3E3]">
-            Invite by email
-          </span>
-          <div className="flex items-end gap-2">
-            <MaterialInput
-              ref={inputRef}
-              name="email"
-              type="email"
-              required
-              placeholder="name@example.com"
-            />
-
-            <MaterialButton type="submit" variant="tonal" disabled={isPending}>
-              {isPending ? "Inviting…" : "Invite"}
-            </MaterialButton>
-          </div>
-        </label>
-
-        {!state.success ? (
-          <p className="mt-2 text-sm text-red-400">{state.message}</p>
-        ) : null}
-      </form>
-
-      <InviteLinkButton tripId={tripId} />
+      <button
+        type="button"
+        onClick={() => startInviteTransition(handleShareInvite)}
+        disabled={isInvitePending}
+        className={
+          [
+            "mt-5 h-11 w-full rounded-full",
+            "bg-[#2A2A2A] text-[#E3E3E3]",
+            "text-sm font-medium",
+            "hover:bg-[#333537]",
+            "transition-colors",
+            "disabled:opacity-60 disabled:pointer-events-none",
+          ].join(" ")
+        }
+      >
+        {isInvitePending ? "Working…" : "Invite Members via Link"}
+      </button>
     </MaterialCard>
   );
 }

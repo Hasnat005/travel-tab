@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { Copy, Share2 } from "lucide-react";
 import { toast } from "sonner";
 
 import MaterialButton from "@/components/ui/MaterialButton";
@@ -35,22 +36,51 @@ export default function InviteLinkButton({ tripId }: { tripId: string }) {
     });
   }
 
+  async function handleShare(url: string) {
+    try {
+      const nav = navigator as unknown as { share?: (data: { url: string }) => Promise<void> };
+      if (typeof nav.share === "function") {
+        await nav.share({ url });
+        return;
+      }
+    } catch {
+      // fall back to copy
+    }
+    await copy(url);
+  }
+
   return (
-    <div className="mt-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <MaterialButton variant="tonal" onClick={handleClick} disabled={isPending} className="h-11">
-          {isPending ? "Generating…" : "Invite Link"}
-        </MaterialButton>
-        {lastUrl ? (
+    <div className="mt-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2">
+          <input
+            readOnly
+            value={lastUrl ?? ""}
+            placeholder="trip.link/xyz…"
+            className="h-11 w-full rounded-full border border-white/10 bg-[#2A2A2A] px-4 text-sm text-[#E3E3E3] placeholder:text-[#C4C7C5] outline-none"
+            aria-label="Invite link"
+          />
+
+          <MaterialButton
+            variant="tonal"
+            onClick={lastUrl ? () => copy(lastUrl) : handleClick}
+            disabled={isPending}
+            className="h-11 whitespace-nowrap"
+          >
+            <Copy className="h-4 w-4" aria-hidden="true" />
+            {isPending ? "Working…" : lastUrl ? "Copy Link" : "Get Link"}
+          </MaterialButton>
+
           <MaterialButton
             variant="text"
-            onClick={() => copy(lastUrl)}
+            onClick={lastUrl ? () => handleShare(lastUrl) : handleClick}
             disabled={isPending}
-            className="h-11"
+            className="h-11 w-11 px-0"
+            aria-label="Share invite link"
           >
-            Copy Link
+            <Share2 className="h-5 w-5" aria-hidden="true" />
           </MaterialButton>
-        ) : null}
+        </div>
       </div>
     </div>
   );
