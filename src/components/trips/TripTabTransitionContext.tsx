@@ -41,7 +41,7 @@ export function TripTabTransitionProvider({
       setPendingTab(tabKey);
       // Perf: startTransition keeps UI responsive while Next fetches the new RSC payload.
       startTransition(() => {
-        router.push(`/trips/${tripId}?tab=${encodeURIComponent(tabKey)}`);
+        router.replace(`/trips/${tripId}?tab=${encodeURIComponent(tabKey)}`, { scroll: false });
       });
     },
     [currentTab, router, tripId]

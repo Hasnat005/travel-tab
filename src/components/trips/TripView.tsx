@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 
 import MaterialCard from '@/components/ui/MaterialCard';
@@ -26,6 +27,17 @@ const TABS: Array<{ key: TripTab; label: string }> = [
   { key: 'activity', label: 'Activity' },
   { key: 'settings', label: 'Settings' },
 ];
+
+function isTripTab(value: string | null): value is TripTab {
+  return (
+    value === 'overview' ||
+    value === 'expenses' ||
+    value === 'settlement' ||
+    value === 'team' ||
+    value === 'activity' ||
+    value === 'settings'
+  );
+}
 
 export type TripViewBalance = {
   user_id: string;
@@ -136,7 +148,15 @@ export function TripView({
   onLeaveTrip,
   onDeleteTrip,
 }: TripViewProps) {
-  const [activeTab, setActiveTab] = useState<TripTab>('overview');
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const activeTab: TripTab = useMemo(() => {
+    const tab = searchParams.get('tab');
+    return isTripTab(tab) ? tab : 'overview';
+  }, [searchParams]);
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const totalTripCost = useMemo(() => {
@@ -173,9 +193,13 @@ export function TripView({
 
   const showFab = activeTab === 'expenses';
 
-  function selectTab(next: TripTab) {
-    setActiveTab(next);
+  function handleTabChange(next: TripTab) {
     setIsMobileMenuOpen(false);
+    if (next === activeTab) return;
+
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', next);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
   async function handleInvite() {
@@ -262,7 +286,7 @@ export function TripView({
               <button
                 key={tab.key}
                 type="button"
-                onClick={() => selectTab(tab.key)}
+                onClick={() => handleTabChange(tab.key)}
                 className={
                   isActive
                     ? 'rounded-full bg-[#A8C7FA] px-4 py-2 text-sm font-medium text-[#062E6F] transition-colors'
@@ -301,7 +325,7 @@ export function TripView({
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => selectTab(tab.key)}
+                  onClick={() => handleTabChange(tab.key)}
                   className={
                     'p-4 text-left text-base ' +
                     'border-b border-white/5 ' +
