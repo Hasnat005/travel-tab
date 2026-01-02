@@ -3,7 +3,7 @@
 import { useTripTabTransition } from "@/components/trips/TripTabTransitionContext";
 
 export default function TripTabNavClient() {
-  const { currentTab, isPending, pendingTab, tabItems, goToTab } = useTripTabTransition();
+  const { currentTab, isPending, pendingTab, tabItems, goToTab, prefetchTab } = useTripTabTransition();
 
   return (
     <div className="scrollbar-hide -mx-4 mt-5 overflow-x-auto px-4">
@@ -17,6 +17,8 @@ export default function TripTabNavClient() {
               key={t.key}
               type="button"
               onClick={() => goToTab(t.key)}
+              onMouseEnter={() => prefetchTab(t.key)}
+              onFocus={() => prefetchTab(t.key)}
               disabled={isPending}
               className={
                 "inline-flex h-10 items-center justify-center rounded-full px-5 text-sm font-medium transition-colors " +

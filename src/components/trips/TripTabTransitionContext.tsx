@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { createContext, useCallback, useContext, useMemo, useState, useTransition } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 type TabItem = { key: string; label: string };
@@ -13,6 +13,7 @@ type TripTabTransitionContextValue = {
   pendingTab: string | null;
   tabItems: TabItem[];
   goToTab: (tabKey: string) => void;
+  prefetchTab: (tabKey: string) => void;
 };
 
 const TripTabTransitionContext = createContext<TripTabTransitionContextValue | null>(null);
@@ -35,6 +36,23 @@ export function TripTabTransitionProvider({
   // When the server-rendered tab becomes the requested tab, treat it as completed.
   const effectivePendingTab = pendingTab && pendingTab === currentTab ? null : pendingTab;
 
+  const prefetchTab = useCallback(
+    (tabKey: string) => {
+      if (!tabKey || tabKey === currentTab) return;
+      router.prefetch(`/trips/${tripId}?tab=${encodeURIComponent(tabKey)}`);
+    },
+    [currentTab, router, tripId]
+  );
+
+  // Perf: warm the most common tabs shortly after first paint.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      prefetchTab("expenses");
+      prefetchTab("settlement");
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [prefetchTab]);
+
   const goToTab = useCallback(
     (tabKey: string) => {
       if (!tabKey || tabKey === currentTab) return;
@@ -52,8 +70,16 @@ export function TripTabTransitionProvider({
   const navigating = isPending || effectivePendingTab !== null;
 
   const value = useMemo(
-    () => ({ tripId, currentTab, isPending: navigating, pendingTab: effectivePendingTab, tabItems, goToTab }),
-    [tripId, currentTab, navigating, effectivePendingTab, tabItems, goToTab]
+    () => ({
+      tripId,
+      currentTab,
+      isPending: navigating,
+      pendingTab: effectivePendingTab,
+      tabItems,
+      goToTab,
+      prefetchTab,
+    }),
+    [tripId, currentTab, navigating, effectivePendingTab, tabItems, goToTab, prefetchTab]
   );
 
   return (

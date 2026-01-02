@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { unstable_cache } from "next/cache";
 
 import type { Prisma } from "@prisma/client";
 
@@ -18,12 +19,209 @@ import TripGoToTabButton from "@/components/trips/TripGoToTabButton";
 import { formatTaka } from "@/lib/money";
 import { Plus } from "lucide-react";
 
+const revalidateWindowSeconds = 30;
+
+const getTripShell = unstable_cache(
+  async (tripId: string) => {
+    return prisma.trip.findUnique({
+      where: { id: tripId },
+      select: {
+        id: true,
+        name: true,
+        destination: true,
+        start_date: true,
+        end_date: true,
+        notes: true,
+        creator_id: true,
+      },
+    });
+  },
+  ["trip-shell"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getTripMembers = unstable_cache(
+  async (tripId: string) => {
+    return prisma.tripMember.findMany({
+      where: { trip_id: tripId },
+      select: {
+        user_id: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            username: true,
+          },
+        },
+      },
+    });
+  },
+  ["trip-members"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getExpensesCount = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expense.count({
+      where: { trip_id: tripId, is_settlement: false },
+    });
+  },
+  ["trip-expenses-count"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getTotalTripCost = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expense.aggregate({
+      where: { trip_id: tripId, is_settlement: false },
+      _sum: { total_amount: true },
+    });
+  },
+  ["trip-total-cost"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getUserPaidAgg = unstable_cache(
+  async (tripId: string, userId: string) => {
+    return prisma.expensePayer.aggregate({
+      where: { user_id: userId, expense: { trip_id: tripId } },
+      _sum: { amount_paid: true },
+    });
+  },
+  ["trip-user-paid"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getUserOwedAgg = unstable_cache(
+  async (tripId: string, userId: string) => {
+    return prisma.expenseShare.aggregate({
+      where: { user_id: userId, expense: { trip_id: tripId } },
+      _sum: { amount_owed: true },
+    });
+  },
+  ["trip-user-owed"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getPaidAggByUser = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expensePayer.groupBy({
+      by: ["user_id"],
+      where: { expense: { trip_id: tripId } },
+      _sum: { amount_paid: true },
+    });
+  },
+  ["trip-paid-by-user"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getOwedAggByUser = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expenseShare.groupBy({
+      by: ["user_id"],
+      where: { expense: { trip_id: tripId } },
+      _sum: { amount_owed: true },
+    });
+  },
+  ["trip-owed-by-user"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getFullExpenses = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expense.findMany({
+      where: { trip_id: tripId },
+      orderBy: [{ date: "desc" }, { created_at: "desc" }],
+      select: {
+        id: true,
+        description: true,
+        date: true,
+        total_amount: true,
+        is_settlement: true,
+        payers: {
+          select: {
+            user_id: true,
+            amount_paid: true,
+            user: { select: { id: true, name: true, email: true, username: true } },
+          },
+        },
+        shares: { select: { user_id: true, amount_owed: true } },
+      },
+    });
+  },
+  ["trip-full-expenses"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getListExpenses = unstable_cache(
+  async (tripId: string) => {
+    return prisma.expense.findMany({
+      where: { trip_id: tripId, is_settlement: false },
+      orderBy: [{ date: "desc" }, { created_at: "desc" }],
+      select: {
+        id: true,
+        description: true,
+        date: true,
+        total_amount: true,
+        payers: {
+          select: {
+            user_id: true,
+            amount_paid: true,
+            user: { select: { name: true, email: true, username: true } },
+          },
+        },
+      },
+    });
+  },
+  ["trip-list-expenses"],
+  { revalidate: revalidateWindowSeconds }
+);
+
+const getTripLogs = unstable_cache(
+  async (tripId: string) => {
+    return prisma.tripLog.findMany({
+      where: { trip_id: tripId },
+      orderBy: { timestamp: "desc" },
+      select: {
+        id: true,
+        action_type: true,
+        details: true,
+        timestamp: true,
+        performer: { select: { id: true, name: true, email: true, username: true } },
+      },
+    });
+  },
+  ["trip-logs"],
+  { revalidate: revalidateWindowSeconds }
+);
+
 function formatDate(d: Date) {
-  return d.toLocaleDateString(undefined, {
+  const date = typeof d === "string" ? new Date(d) : d;
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
   });
+}
+
+function toNumberSafe(value: unknown): number {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (value && typeof value === "object") {
+    const maybe = value as { toNumber?: () => number };
+    if (typeof maybe.toNumber === "function") return maybe.toNumber();
+  }
+  return 0;
+}
+
+function toIsoStringSafe(value: Date | string): string {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return date.toISOString();
 }
 
 function formatCurrency(amount: number) {
@@ -73,188 +271,104 @@ export default async function TripDetailsPage({
   }
 
   const supabase = await createSupabaseServerClient();
-  // Perf: fetch auth + base trip in parallel; only fetch heavy tab data as needed.
-  const [
-    {
-      data: { user },
-    },
-    trip,
-  ] = await Promise.all([
-    supabase.auth.getUser(),
-    prisma.trip.findUnique({
-      where: { id: tripId },
-      select: {
-        id: true,
-        name: true,
-        destination: true,
-        start_date: true,
-        end_date: true,
-        notes: true,
-        creator_id: true,
-        members: {
-          select: {
-            user_id: true,
-            user: { select: { id: true, name: true, email: true, username: true } },
-          },
-        },
-        _count: { select: { expenses: true, logs: true } },
-      },
-    }),
-  ]);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   if (!user) redirect("/login");
+
+  // Perf: fetch minimal shell first; tab-specific queries come later.
+  const trip = await getTripShell(tripId);
 
   if (!trip) {
     notFound();
   }
 
-  const isMember = trip.members.some((m) => m.user_id === user.id);
-  if (!isMember) {
-    notFound();
-  }
-
-  const expensesCount = await prisma.expense.count({
-    where: { trip_id: tripId, is_settlement: false },
+  // AuthZ: verify membership with a focused query.
+  const membership = await prisma.tripMember.findFirst({
+    where: { trip_id: tripId, user_id: user.id },
+    select: { user_id: true },
   });
-  const logsCount = trip._count.logs;
+  if (!membership) notFound();
 
+  const needsMembers = tab === "overview" || tab === "expenses" || tab === "settlement" || tab === "team";
   const needsFullExpenses = tab === "overview" || tab === "settlement";
   const needsExpenseList = tab === "expenses";
   const needsLogs = tab === "activity";
 
-  type FullExpenseRow = {
-    id: string;
-    description: string;
-    date: Date;
-    total_amount: Prisma.Decimal;
-    is_settlement: boolean;
-    payers: Array<{
-      user_id: string;
-      amount_paid: Prisma.Decimal;
-      user: { id: string; name: string | null; email: string; username: string | null };
-    }>;
-    shares: Array<{ user_id: string; amount_owed: Prisma.Decimal }>;
-  };
+  const [expensesCount, totalAgg, members, listExpenses, logs, paidAgg, owedAgg, fullExpenses, userPaidAgg, userOwedAgg] =
+    await Promise.all([
+      tab === "overview" || tab === "expenses" ? getExpensesCount(tripId) : Promise.resolve(0),
+      getTotalTripCost(tripId),
+      needsMembers ? getTripMembers(tripId) : Promise.resolve([]),
+      needsExpenseList ? getListExpenses(tripId) : Promise.resolve([]),
+      needsLogs ? getTripLogs(tripId) : Promise.resolve([]),
+      tab === "overview" ? getPaidAggByUser(tripId) : Promise.resolve([]),
+      tab === "overview" ? getOwedAggByUser(tripId) : Promise.resolve([]),
+      needsFullExpenses ? getFullExpenses(tripId) : Promise.resolve([]),
+      tab === "overview" ? Promise.resolve(null) : getUserPaidAgg(tripId, user.id),
+      tab === "overview" ? Promise.resolve(null) : getUserOwedAgg(tripId, user.id),
+    ]);
 
-  type ListExpenseRow = {
-    id: string;
-    description: string;
-    date: Date;
-    total_amount: Prisma.Decimal;
-    payers: Array<{
-      user_id: string;
-      amount_paid: Prisma.Decimal;
-      user: { name: string | null; email: string; username: string | null };
-    }>;
-  };
-
-  const [totalAgg, paidAgg, owedAgg, fullExpenses, listExpenses, logs] = await Promise.all([
-    prisma.expense.aggregate({
-      where: { trip_id: tripId, is_settlement: false },
-      _sum: { total_amount: true },
-    }),
-    prisma.expensePayer.groupBy({
-      by: ["user_id"],
-      where: { expense: { trip_id: tripId } },
-      _sum: { amount_paid: true },
-    }),
-    prisma.expenseShare.groupBy({
-      by: ["user_id"],
-      where: { expense: { trip_id: tripId } },
-      _sum: { amount_owed: true },
-    }),
-    needsFullExpenses
-      ? prisma.expense.findMany({
-          where: { trip_id: tripId },
-          orderBy: [{ date: "desc" }, { created_at: "desc" }],
-          select: {
-            id: true,
-            description: true,
-            date: true,
-            total_amount: true,
-            is_settlement: true,
-            payers: {
-              select: {
-                user_id: true,
-                amount_paid: true,
-                user: { select: { id: true, name: true, email: true, username: true } },
-              },
-            },
-            shares: { select: { user_id: true, amount_owed: true } },
-          },
-        })
-      : Promise.resolve([] as FullExpenseRow[]),
-    needsExpenseList
-      ? prisma.expense.findMany({
-          where: { trip_id: tripId, is_settlement: false },
-          orderBy: [{ date: "desc" }, { created_at: "desc" }],
-          select: {
-            id: true,
-            description: true,
-            date: true,
-            total_amount: true,
-            payers: {
-              select: {
-                user_id: true,
-                amount_paid: true,
-                user: { select: { name: true, email: true, username: true } },
-              },
-            },
-          },
-        })
-      : Promise.resolve([] as ListExpenseRow[]),
-    needsLogs
-      ? prisma.tripLog.findMany({
-          where: { trip_id: tripId },
-          orderBy: { timestamp: "desc" },
-          select: {
-            id: true,
-            action_type: true,
-            details: true,
-            timestamp: true,
-            performer: { select: { id: true, name: true, email: true, username: true } },
-          },
-        })
-      : Promise.resolve([]),
-  ]);
-
-  const totalTripCost = totalAgg._sum?.total_amount?.toNumber() ?? 0;
+  const totalTripCost = toNumberSafe(totalAgg._sum?.total_amount);
 
   // R6: Member Cards & Balances
   // paid = sum(payers.amount_paid), owed = sum(shares.amount_owed), net = paid - owed
-  const paidCentsByUser = new Map<string, number>();
-  const owedCentsByUser = new Map<string, number>();
-  for (const m of trip.members) {
-    paidCentsByUser.set(m.user_id, 0);
-    owedCentsByUser.set(m.user_id, 0);
+  let memberBalances: Array<{
+    user_id: string;
+    username?: string | null;
+    name: string | null;
+    email: string;
+    paid: number;
+    owed: number;
+    net: number;
+  }> = [];
+
+  if (tab === "overview") {
+    const paidCentsByUser = new Map<string, number>();
+    const owedCentsByUser = new Map<string, number>();
+    for (const m of members) {
+      paidCentsByUser.set(m.user_id, 0);
+      owedCentsByUser.set(m.user_id, 0);
+    }
+
+    for (const row of paidAgg) {
+      const amount = toNumberSafe(row._sum.amount_paid);
+      paidCentsByUser.set(row.user_id, toCents(amount));
+    }
+
+    for (const row of owedAgg) {
+      const amount = toNumberSafe(row._sum.amount_owed);
+      owedCentsByUser.set(row.user_id, toCents(amount));
+    }
+
+    memberBalances = members.map((m) => {
+      const paid = fromCents(paidCentsByUser.get(m.user_id) ?? 0);
+      const owed = fromCents(owedCentsByUser.get(m.user_id) ?? 0);
+      const net = Number((paid - owed).toFixed(2));
+      return {
+        user_id: m.user_id,
+        username: m.user.username,
+        name: m.user.name?.trim() ? m.user.name : null,
+        email: m.user.email,
+        paid,
+        owed,
+        net,
+      };
+    });
   }
 
-  for (const row of paidAgg) {
-    const amount = row._sum.amount_paid?.toNumber() ?? 0;
-    paidCentsByUser.set(row.user_id, toCents(amount));
-  }
-
-  for (const row of owedAgg) {
-    const amount = row._sum.amount_owed?.toNumber() ?? 0;
-    owedCentsByUser.set(row.user_id, toCents(amount));
-  }
-
-  const memberBalances = trip.members.map((m) => {
-    const paid = fromCents(paidCentsByUser.get(m.user_id) ?? 0);
-    const owed = fromCents(owedCentsByUser.get(m.user_id) ?? 0);
-    const net = Number((paid - owed).toFixed(2));
-    return {
-      user_id: m.user_id,
-      username: m.user.username,
-      name: m.user.name?.trim() ? m.user.name : null,
-      email: m.user.email,
-      paid,
-      owed,
-      net,
-    };
-  });
-
-  const yourBalance = memberBalances.find((m) => m.user_id === user.id) ?? null;
+  const yourBalance =
+    tab === "overview"
+      ? memberBalances.find((m) => m.user_id === user.id) ?? null
+      : {
+          net: Number(
+            (
+              toNumberSafe(userPaidAgg?._sum?.amount_paid) -
+              toNumberSafe(userOwedAgg?._sum?.amount_owed)
+            ).toFixed(2)
+          ),
+        };
 
   const nonSettlementFullExpenses = fullExpenses.filter((e) => !e.is_settlement);
 
@@ -263,16 +377,16 @@ export default async function TripDetailsPage({
     ? nonSettlementFullExpenses.map((e) => ({
         id: e.id,
         description: e.description,
-        date: e.date.toISOString(),
-        total_amount: e.total_amount.toNumber(),
+        date: toIsoStringSafe(e.date),
+        total_amount: toNumberSafe(e.total_amount),
         payers: e.payers.map((p) => ({
           user_id: p.user_id,
-          amount_paid: p.amount_paid.toNumber(),
+          amount_paid: toNumberSafe(p.amount_paid),
           user: { name: p.user.name, email: p.user.email, username: p.user.username },
         })),
         shares: e.shares.map((s) => ({
           user_id: s.user_id,
-          amount_owed: s.amount_owed.toNumber(),
+          amount_owed: toNumberSafe(s.amount_owed),
         })),
       }))
     : [];
@@ -284,21 +398,24 @@ export default async function TripDetailsPage({
           id: e.id,
           payers: e.payers.map((p) => ({
             user_id: p.user_id,
-            amount_paid: p.amount_paid.toNumber(),
+            amount_paid: toNumberSafe(p.amount_paid),
           })),
           shares: e.shares.map((s) => ({
             user_id: s.user_id,
-            amount_owed: s.amount_owed.toNumber(),
+            amount_owed: toNumberSafe(s.amount_owed),
           })),
         })),
-        trip.members.map((m) => m.user_id)
+        members.map((m) => m.user_id)
       ).settlements
     : [];
 
-  const memberLabelEntries = trip.members.map((m) => [
-    m.user_id,
-    m.user.username?.trim() ? `@${m.user.username.trim()}` : m.user.name?.trim() || m.user.email,
-  ] as const);
+  const memberLabelEntries = members.map(
+    (m) =>
+      [
+        m.user_id,
+        m.user.username?.trim() ? `@${m.user.username.trim()}` : m.user.name?.trim() || m.user.email,
+      ] as const
+  );
 
   const memberLabelByIdRecord = Object.fromEntries(memberLabelEntries);
 
@@ -321,7 +438,7 @@ export default async function TripDetailsPage({
 
   const showFab = tab === "overview" || tab === "expenses";
 
-  const membersForModal = trip.members.map((m) => ({
+  const membersForModal = members.map((m) => ({
     id: m.user_id,
     name: m.user.username?.trim() ? `@${m.user.username}` : m.user.name,
     email: m.user.email,
@@ -426,7 +543,7 @@ export default async function TripDetailsPage({
                             <p className="text-xs text-[#C4C7C5]">{formatDate(e.date)}</p>
                           </div>
                           <p className="text-sm font-semibold tabular-nums text-[#E3E3E3]">
-                            {formatCurrency(e.total_amount.toNumber())}
+                            {formatCurrency(toNumberSafe(e.total_amount))}
                           </p>
                         </div>
                       </li>
@@ -465,7 +582,7 @@ export default async function TripDetailsPage({
                           </div>
                           <div className="text-right">
                             <p className="text-base font-semibold tabular-nums">
-                              {formatCurrency(e.total_amount.toNumber())}
+                              {formatCurrency(toNumberSafe(e.total_amount))}
                             </p>
                             <p className="text-sm text-[#C4C7C5]">{formatDate(e.date)}</p>
                           </div>
@@ -539,7 +656,7 @@ export default async function TripDetailsPage({
               tripId={tripId}
               creatorId={trip.creator_id}
               currentUserId={user.id}
-              members={trip.members}
+              members={members}
             />
           ) : null}
 
