@@ -21,12 +21,11 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   // NOTE: Prisma CLI always loads prisma.config.ts, but not every command needs a DB URL.
-  // Using process.env directly avoids hard-failing commands like `prisma generate` in CI.
-  datasource: {
-    // Prefer a migration-specific URL (recommended for Supabase: Session Pooler / IPv4).
+  // For build/generate commands, provide a dummy URL if none exists.
+  datasource: datasourceUrl ? {
     url: datasourceUrl,
-    // Avoid using the same database as both main and shadow (common when only one URL is available).
-    // If you have a dedicated shadow DB, set SHADOW_DATABASE_URL explicitly.
     shadowDatabaseUrl,
+  } : {
+    url: "postgresql://dummy:dummy@localhost:5432/dummy",
   },
 });

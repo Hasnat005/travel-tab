@@ -36,7 +36,7 @@ const getTripShell = unstable_cache(
       },
     });
   },
-  (tripId: string) => ["trip-shell", tripId],
+  ["trip-shell"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -57,7 +57,7 @@ const getTripMembers = unstable_cache(
       },
     });
   },
-  (tripId: string) => ["trip-members", tripId],
+  ["trip-members"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -67,7 +67,7 @@ const getExpensesCount = unstable_cache(
       where: { trip_id: tripId, is_settlement: false },
     });
   },
-  (tripId: string) => ["trip-expenses-count", tripId],
+  ["trip-expenses-count"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -78,7 +78,7 @@ const getTotalTripCost = unstable_cache(
       _sum: { total_amount: true },
     });
   },
-  (tripId: string) => ["trip-total-cost", tripId],
+  ["trip-total-cost"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -89,7 +89,7 @@ const getUserPaidAgg = unstable_cache(
       _sum: { amount_paid: true },
     });
   },
-  (tripId: string, userId: string) => ["trip-user-paid", tripId, userId],
+  ["trip-user-paid"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -100,7 +100,7 @@ const getUserOwedAgg = unstable_cache(
       _sum: { amount_owed: true },
     });
   },
-  (tripId: string, userId: string) => ["trip-user-owed", tripId, userId],
+  ["trip-user-owed"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -112,7 +112,7 @@ const getPaidAggByUser = unstable_cache(
       _sum: { amount_paid: true },
     });
   },
-  (tripId: string) => ["trip-paid-by-user", tripId],
+  ["trip-paid-by-user"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -124,7 +124,7 @@ const getOwedAggByUser = unstable_cache(
       _sum: { amount_owed: true },
     });
   },
-  (tripId: string) => ["trip-owed-by-user", tripId],
+  ["trip-owed-by-user"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -150,7 +150,7 @@ const getFullExpenses = unstable_cache(
       },
     });
   },
-  (tripId: string) => ["trip-full-expenses", tripId],
+  ["trip-full-expenses"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -174,7 +174,7 @@ const getListExpenses = unstable_cache(
       },
     });
   },
-  (tripId: string) => ["trip-list-expenses", tripId],
+  ["trip-list-expenses"],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -192,7 +192,7 @@ const getTripLogs = unstable_cache(
       },
     });
   },
-  (tripId: string) => ["trip-logs", tripId],
+  ["trip-logs"],
   { revalidate: revalidateWindowSeconds }
 );
 
