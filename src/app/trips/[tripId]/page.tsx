@@ -36,7 +36,7 @@ const getTripShell = unstable_cache(
       },
     });
   },
-  ["trip-shell"],
+  (tripId: string) => ["trip-shell", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -57,7 +57,7 @@ const getTripMembers = unstable_cache(
       },
     });
   },
-  ["trip-members"],
+  (tripId: string) => ["trip-members", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -67,7 +67,7 @@ const getExpensesCount = unstable_cache(
       where: { trip_id: tripId, is_settlement: false },
     });
   },
-  ["trip-expenses-count"],
+  (tripId: string) => ["trip-expenses-count", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -78,7 +78,7 @@ const getTotalTripCost = unstable_cache(
       _sum: { total_amount: true },
     });
   },
-  ["trip-total-cost"],
+  (tripId: string) => ["trip-total-cost", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -89,7 +89,7 @@ const getUserPaidAgg = unstable_cache(
       _sum: { amount_paid: true },
     });
   },
-  ["trip-user-paid"],
+  (tripId: string, userId: string) => ["trip-user-paid", tripId, userId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -100,7 +100,7 @@ const getUserOwedAgg = unstable_cache(
       _sum: { amount_owed: true },
     });
   },
-  ["trip-user-owed"],
+  (tripId: string, userId: string) => ["trip-user-owed", tripId, userId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -112,7 +112,7 @@ const getPaidAggByUser = unstable_cache(
       _sum: { amount_paid: true },
     });
   },
-  ["trip-paid-by-user"],
+  (tripId: string) => ["trip-paid-by-user", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -124,7 +124,7 @@ const getOwedAggByUser = unstable_cache(
       _sum: { amount_owed: true },
     });
   },
-  ["trip-owed-by-user"],
+  (tripId: string) => ["trip-owed-by-user", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -150,7 +150,7 @@ const getFullExpenses = unstable_cache(
       },
     });
   },
-  ["trip-full-expenses"],
+  (tripId: string) => ["trip-full-expenses", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -174,7 +174,7 @@ const getListExpenses = unstable_cache(
       },
     });
   },
-  ["trip-list-expenses"],
+  (tripId: string) => ["trip-list-expenses", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -192,7 +192,7 @@ const getTripLogs = unstable_cache(
       },
     });
   },
-  ["trip-logs"],
+  (tripId: string) => ["trip-logs", tripId],
   { revalidate: revalidateWindowSeconds }
 );
 
@@ -392,9 +392,11 @@ export default async function TripDetailsPage({
     : [];
 
   // R9.4: Debt simplification / settlement plan (only when full expense detail is loaded)
+  // CRITICAL: Exclude is_settlement expenses from debt calculation
+  // Settlement transactions are payments that reduce debt, not new expenses to split
   const settlements = needsFullExpenses
     ? calculateTripDebts(
-        fullExpenses.map((e) => ({
+        nonSettlementFullExpenses.map((e) => ({
           id: e.id,
           payers: e.payers.map((p) => ({
             user_id: p.user_id,
